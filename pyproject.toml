@@ -1,0 +1,7 @@
+[project]
+name = "dmm"
+version = "0.1.0"
+description = "Distributed matrix multiplication layout and communication experiments"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []

@@ -1,0 +1,9 @@
+/build/
+/.venv/
+/.slides-build/
+/output/
+/results/*
+!/results/.gitkeep
+__pycache__/
+*.py[cod]
+.DS_Store
