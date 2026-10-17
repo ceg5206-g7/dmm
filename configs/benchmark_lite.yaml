@@ -1,0 +1,11 @@
+data_dir: ../data
+output: ../results/benchmark_lite.csv
+algorithms: [cannon]
+modes:
+  sequential: {}
+  threaded:
+    workers: [1, 2]
+groups: [0, 1, 2]
+sizes: [16, 32, 64, 128, 256]
+repeats: 1
+warmups: 2

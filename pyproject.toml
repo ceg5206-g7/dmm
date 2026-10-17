@@ -4,4 +4,28 @@ version = "0.1.0"
 description = "Distributed matrix multiplication layout and communication experiments"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.4",
+    "pyyaml>=6.0.3",
+]
+
+[project.scripts]
+dmm = "dmm.cli:main"
+
+[build-system]
+requires = ["scikit-build-core>=0.11", "pybind11>=3.0"]
+build-backend = "scikit_build_core.build"
+
+[tool.scikit-build]
+build-dir = "build/{wheel_tag}"
+wheel.packages = ["python/dmm"]
+
+[tool.scikit-build.cmake.define]
+BUILD_TESTING = "OFF"
+
+[dependency-groups]
+dev = ["pytest>=9.1.1", "pybind11>=3.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]

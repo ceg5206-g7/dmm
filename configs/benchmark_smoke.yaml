@@ -1,0 +1,11 @@
+data_dir: ../data_smoke
+output: ../results/benchmark_smoke.csv
+algorithms: [cannon]
+modes:
+  sequential: {}
+  threaded:
+    workers: [1, 2]
+groups: [0, 1]
+sizes: [4, 12]
+repeats: 2
+warmups: 1

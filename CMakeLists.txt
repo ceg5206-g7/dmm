@@ -6,10 +6,21 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(Threads REQUIRED)
 
+find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
+execute_process(COMMAND "${Python_EXECUTABLE}" -m pybind11 --cmakedir
+  OUTPUT_VARIABLE pybind11_DIR OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+find_package(pybind11 CONFIG REQUIRED)
+
 add_library(dmm_core src/cannon.cpp src/execution.cpp)
 target_include_directories(dmm_core PUBLIC include)
 target_link_libraries(dmm_core PUBLIC Threads::Threads)
 target_compile_options(dmm_core PRIVATE -Wall -Wextra -Wpedantic)
+set_target_properties(dmm_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+pybind11_add_module(_native src/bindings.cpp)
+target_link_libraries(_native PRIVATE dmm_core)
+target_compile_definitions(_native PRIVATE DMM_BUILD_TYPE="${CMAKE_BUILD_TYPE}")
+install(TARGETS _native DESTINATION dmm)
 
 include(CTest)
 if(BUILD_TESTING)

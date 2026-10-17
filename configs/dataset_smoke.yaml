@@ -1,0 +1,5 @@
+data_dir: ../data_smoke
+seed: 5206
+groups: [0, 1]
+sizes: [4, 12]
+value_range: [0, 255]

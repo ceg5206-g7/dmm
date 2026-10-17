@@ -7,3 +7,7 @@
 __pycache__/
 *.py[cod]
 .DS_Store
+proposal.pdf
+/data/
+/data_smoke/
+/.pytest_cache/
