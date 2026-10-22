@@ -1,0 +1,14 @@
+data_dir: ../data
+output: ../results/benchmark_mixed.csv
+cases:
+  - {layout: cannon, P: 16, c: 1}
+  - {layout: cannon, P: 64, c: 1}
+  - {layout: cannon, P: 256, c: 1}
+modes:
+  sequential: {}
+  threaded:
+    workers: [1, 2]
+groups: [0]
+sizes: [16, 32]
+repeats: 2
+warmups: 1

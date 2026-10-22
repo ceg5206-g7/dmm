@@ -6,27 +6,37 @@ from pathlib import Path
 from statistics import mean
 
 from dmm.benchmark import CSV_FIELDS
-from dmm.config import ALGORITHMS, MODES
+from dmm.config import MODES, validate_case
 
-SUMMARY_FIELDS = ("algorithm", "mode", "workers", "size", "group_count", "repeats", "mean_time_s", "speedup")
+SUMMARY_FIELDS = ("layout", "P", "c", "mode", "workers", "size", "group_count", "repeats", "mean_time_s", "speedup")
 
 
-def _load_timings(input_path: str | Path) -> dict[tuple[str, str, int | None, int], dict[int, dict[int, float]]]:
+def _load_timings(input_path: str | Path) -> dict:
     """Load and validate CSV rows, grouping timings by execution setting and size."""
     timings = {}
     try:
         with Path(input_path).open(newline="", encoding="utf-8") as handle:
             reader = csv.DictReader(handle, strict=True)
-            legacy_fields = tuple(field for field in CSV_FIELDS if field != "repeat")
-            if reader.fieldnames is None or sorted(reader.fieldnames) not in (sorted(CSV_FIELDS), sorted(legacy_fields)):
+            legacy_fields = ("algorithm", "mode", "workers", "group", "pair", "size", "repeat",
+                             "time_s", "max_abs_error", "frobenius_relative_error")
+            schemas = (CSV_FIELDS, tuple(f for f in CSV_FIELDS if f != "repeat"),
+                       legacy_fields, tuple(f for f in legacy_fields if f != "repeat"))
+            if reader.fieldnames is None or sorted(reader.fieldnames) not in [sorted(s) for s in schemas]:
                 raise ValueError(f"Benchmark CSV columns must be: {', '.join(CSV_FIELDS)}")
             for row in reader:
                 try:
                     if None in row or any(value is None for value in row.values()):
                         raise ValueError("row must contain all benchmark columns")
-                    algorithm, mode = row["algorithm"].strip(), row["mode"].strip()
-                    if algorithm not in ALGORITHMS or mode not in MODES:
-                        raise ValueError("unknown algorithm or mode")
+                    mode = row["mode"].strip()
+                    if "layout" in row:
+                        layout, P, c = row["layout"].strip(), int(row["P"]), int(row["c"])
+                        validate_case(dict(layout=layout, P=P, c=c))
+                    else:
+                        layout, P, c = row["algorithm"].strip(), None, None
+                        if layout not in ("cannon", "fox", "strassen", "cw"):
+                            raise ValueError("unknown algorithm")
+                    if mode not in MODES:
+                        raise ValueError("unknown mode")
                     group, pair, size = (int(row[name]) for name in ("group", "pair", "size"))
                     if group < 0 or pair < 0 or size <= 0:
                         raise ValueError("group and pair must be non-negative; size must be positive")
@@ -44,9 +54,9 @@ def _load_timings(input_path: str | Path) -> dict[tuple[str, str, int | None, in
                     elapsed = float(row["time_s"])
                     if not isfinite(elapsed) or elapsed <= 0:
                         raise ValueError("time_s must be positive and finite")
-                    samples = timings.setdefault((algorithm, mode, workers, size), {}).setdefault(group, {})
+                    samples = timings.setdefault((layout, P, c, mode, workers, size), {}).setdefault(group, {})
                     if repeat in samples:
-                        raise ValueError("duplicate result for the same algorithm, mode, workers, group, size and repeat")
+                        raise ValueError("duplicate result for the same layout, P, c, mode, workers, group, size and repeat")
                     samples[repeat] = elapsed
                 except ValueError as error:
                     raise ValueError(f"Invalid benchmark CSV row {reader.line_num}: {error}") from error
@@ -57,10 +67,10 @@ def _load_timings(input_path: str | Path) -> dict[tuple[str, str, int | None, in
     # shortcut: infer repeat count from CSV; use run metadata when complete-run validation is required.
     repeat_count = max(len(samples) for groups in timings.values() for samples in groups.values())
     repeat_ids = set(range(repeat_count))
-    for (algorithm, mode, workers, size), groups in timings.items():
+    for (layout, P, c, mode, workers, size), groups in timings.items():
         for group, samples in groups.items():
             if samples.keys() != repeat_ids:
-                raise ValueError(f"Incomplete or inconsistent repeats for algorithm {algorithm!r}, mode {mode!r}, "
+                raise ValueError(f"Incomplete or inconsistent repeats for layout {layout!r}, P={P}, c={c}, mode {mode!r}, "
                                  f"workers {workers}, size {size}, group {group}; expected IDs {sorted(repeat_ids)}")
     return timings
 
@@ -73,17 +83,17 @@ def summarize_results(input_path: str | Path) -> list[dict]:
         for key, groups in timings.items()
     }
     summary = []
-    for key in sorted(timings, key=lambda key: (key[0], key[1] != "sequential", key[2] or 0, key[3])):
-        algorithm, mode, workers, size = key
-        baseline = (algorithm, "sequential", None, size)
+    for key in sorted(timings, key=lambda key: (key[0], key[1] or 0, key[2] or 0, key[3] != "sequential", key[4] or 0, key[5])):
+        layout, P, c, mode, workers, size = key
+        baseline = (layout, P, c, "sequential", None, size)
         if baseline not in timings:
-            raise ValueError(f"Missing sequential baseline for algorithm {algorithm!r}, size {size}")
+            raise ValueError(f"Missing sequential baseline for layout {layout!r}, P={P}, c={c}, size {size}")
         if timings[key].keys() != timings[baseline].keys():
-            raise ValueError(f"Group mismatch for algorithm {algorithm!r}, size {size}, workers {workers}")
+            raise ValueError(f"Group mismatch for layout {layout!r}, P={P}, c={c}, size {size}, workers {workers}")
         speedup = averages[baseline] / averages[key]
         if not isfinite(speedup) or speedup <= 0:
-            raise ValueError(f"Speedup must be positive and finite for algorithm {algorithm!r}, size {size}")
-        summary.append(dict(algorithm=algorithm, mode=mode, workers=workers, size=size,
+            raise ValueError(f"Speedup must be positive and finite for layout {layout!r}, P={P}, c={c}, size {size}")
+        summary.append(dict(layout=layout, P=P, c=c, mode=mode, workers=workers, size=size,
                             group_count=len(timings[key]), repeats=len(next(iter(timings[key].values()))),
                             mean_time_s=averages[key], speedup=speedup))
     return summary
@@ -97,16 +107,16 @@ def _plot_runtime(summary: list[dict], output_path: Path) -> None:
 
     runtime_series = {}
     for row in summary:
-        runtime_series.setdefault((row["algorithm"], row["mode"], row["workers"]), []).append(row)
+        runtime_series.setdefault((row["layout"], row["P"], row["c"], row["mode"], row["workers"]), []).append(row)
 
     figure = Figure(figsize=(9, 6), layout="constrained")
     FigureCanvasAgg(figure)
     axis = figure.subplots()
-    for (algorithm, mode, workers), rows in runtime_series.items():
+    for (layout, P, c, mode, workers), rows in runtime_series.items():
         rows = sorted(rows, key=lambda row: row["size"])
         setting = "sequential" if mode == "sequential" else f"{workers} thread(s)"
         axis.plot([row["size"] for row in rows], [row["mean_time_s"] for row in rows],
-                  marker="o", label=f"{algorithm}: {setting}")
+                  marker="o", label=f"{layout}: P={P}, c={c}, {setting}")
     sizes = sorted({row["size"] for row in summary})
     axis.set_xscale("log", base=2)
     axis.set_xticks(sizes, labels=[str(size) for size in sizes])
@@ -125,16 +135,16 @@ def _plot_speedup(summary: list[dict], output_path: Path) -> None:
     speedup_series = {}
     for row in summary:
         if row["mode"] == "threaded":
-            speedup_series.setdefault((row["algorithm"], row["size"]), []).append(row)
+            speedup_series.setdefault((row["layout"], row["P"], row["c"], row["size"]), []).append(row)
 
     figure = Figure(figsize=(9, 6), layout="constrained")
     FigureCanvasAgg(figure)
     axis = figure.subplots()
     axis.axhline(1, color="gray", linestyle="--", label="Sequential baseline")
-    for (algorithm, size), rows in speedup_series.items():
+    for (layout, P, c, size), rows in speedup_series.items():
         rows = sorted(rows, key=lambda row: row["workers"])
         axis.plot([row["workers"] for row in rows], [row["speedup"] for row in rows],
-                  marker="o", label=f"{algorithm}: N={size}")
+                  marker="o", label=f"{layout}: P={P}, c={c}, N={size}")
     if speedup_series:
         axis.set_xticks(sorted({row["workers"] for row in summary if row["workers"] is not None}))
     else:

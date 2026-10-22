@@ -17,13 +17,13 @@ def write_results(path, rows, fields=CSV_FIELDS):
 @pytest.fixture
 def rows():
     results = []
-    for algorithm, algorithm_factor in (("cannon", 1), ("fox", 2)):
+    for algorithm, algorithm_factor in (("cannon", 1), ("ring", 2)):
         for pair, size, size_factor in ((0, 16, 1), (1, 32, 3)):
             for mode, workers, times in (("sequential", None, (2, 6)),
                                            ("threaded", 1, (4, 8)),
                                            ("threaded", 2, (1, 3))):
                 for group, elapsed in zip((2, 5), times):
-                    results.append(dict(algorithm=algorithm, mode=mode, workers=workers,
+                    results.append(dict(layout=algorithm, P=16, c=1, mode=mode, workers=workers,
                                         group=group, pair=pair, size=size, repeat=0,
                                         time_s=elapsed * algorithm_factor * size_factor,
                                         max_abs_error=0, frobenius_relative_error=0))
@@ -34,20 +34,20 @@ def test_summary_averages_groups_and_uses_each_algorithm_and_size_baseline(tmp_p
     path = write_results(tmp_path / "run.csv", reversed(rows))
     summary = analysis.summarize_results(str(path))
     expected = []
-    for algorithm, factor in (("cannon", 1), ("fox", 2)):
+    for algorithm, factor in (("cannon", 1), ("ring", 2)):
         for mode, workers, average, speedup in (("sequential", None, 4, 1),
                                                  ("threaded", 1, 6, 2 / 3),
                                                  ("threaded", 2, 2, 2)):
             for size, size_factor in ((16, 1), (32, 3)):
-                expected.append(dict(algorithm=algorithm, mode=mode, workers=workers,
+                expected.append(dict(layout=algorithm, P=16, c=1, mode=mode, workers=workers,
                                      size=size, group_count=2, repeats=1, mean_time_s=average * factor * size_factor,
                                      speedup=speedup))
     assert summary == expected
 
 
-@pytest.mark.parametrize("changes", [{"algorithm": "fox"}, {"size": 32}])
+@pytest.mark.parametrize("changes", [{"layout": "ring"}, {"size": 32}])
 def test_baseline_must_match_algorithm_and_size(tmp_path, changes):
-    serial = dict(algorithm="cannon", mode="sequential", workers=None, group=0, pair=0, size=16, repeat=0, time_s=4)
+    serial = dict(layout="cannon", P=16, c=1, mode="sequential", workers=None, group=0, pair=0, size=16, repeat=0, time_s=4)
     parallel = dict(serial, mode="threaded", workers=1, **changes)
     path = write_results(tmp_path / "run.csv", [serial, parallel])
     with pytest.raises(ValueError, match="Missing sequential baseline"):
@@ -73,8 +73,8 @@ def test_duplicate_results_are_rejected(tmp_path, rows):
 
 
 @pytest.mark.parametrize("changes,message", [
-    ({"algorithm": "unknown"}, "unknown algorithm"),
-    ({"mode": "unknown"}, "unknown algorithm or mode"),
+    ({"layout": "unknown"}, "case layout"),
+    ({"mode": "unknown"}, "unknown mode"),
     ({"group": -1}, "non-negative"),
     ({"pair": -1}, "non-negative"),
     ({"size": 0}, "positive"),
@@ -129,7 +129,7 @@ def test_malformed_rows_are_rejected(tmp_path, line, message):
 
 
 def test_unrepresentable_speedup_is_rejected(tmp_path):
-    serial = dict(algorithm="cannon", mode="sequential", workers=None, group=0, pair=0, size=16, repeat=0, time_s=1e308)
+    serial = dict(layout="cannon", P=16, c=1, mode="sequential", workers=None, group=0, pair=0, size=16, repeat=0, time_s=1e308)
     parallel = dict(serial, mode="threaded", workers=1, time_s=1e-308)
     with pytest.raises(ValueError, match="Speedup must be positive and finite"):
         analysis.summarize_results(write_results(tmp_path / "run.csv", [serial, parallel]))
@@ -141,7 +141,7 @@ def test_repeated_measurements_are_averaged_within_each_group(tmp_path, rows):
     summary = analysis.summarize_results(write_results(tmp_path / "run.csv", reversed(repeated)))
     assert len(summary) == 12
     assert all(row["group_count"] == 2 and row["repeats"] == 3 for row in summary)
-    selected = [row for row in summary if row["algorithm"] == "cannon" and row["size"] == 16]
+    selected = [row for row in summary if row["layout"] == "cannon" and row["size"] == 16]
     assert [row["mean_time_s"] for row in selected] == [4, 6, 2]
     assert [row["speedup"] for row in selected] == pytest.approx([1, 2 / 3, 2])
 
@@ -204,10 +204,10 @@ def test_analysis_writes_summary_and_real_pngs_without_changing_input(tmp_path, 
         pixels = imread(output / filename)
         assert pixels.shape[:2] == (900, 1350)
         assert pixels.min() < 0.5 and pixels.max() > 0.9
-    time_curve = next(line for line in figures["time.png"].axes[0].lines if line.get_label() == "cannon: sequential")
+    time_curve = next(line for line in figures["time.png"].axes[0].lines if line.get_label() == "cannon: P=16, c=1, sequential")
     assert list(time_curve.get_xdata()) == [16, 32]
     assert list(time_curve.get_ydata()) == [4, 12]
-    speedup_curve = next(line for line in figures["speedup.png"].axes[0].lines if line.get_label() == "cannon: N=16")
+    speedup_curve = next(line for line in figures["speedup.png"].axes[0].lines if line.get_label() == "cannon: P=16, c=1, N=16")
     assert list(speedup_curve.get_xdata()) == [1, 2]
     assert list(speedup_curve.get_ydata()) == pytest.approx([2 / 3, 2])
 
@@ -247,3 +247,23 @@ def test_existing_output_is_preserved(tmp_path, rows, existing_file):
     assert sentinel.read_text() == "keep this file"
     if not existing_file:
         assert list(output.iterdir()) == [sentinel]
+
+
+@pytest.mark.parametrize("changed", [dict(P=64), dict(layout="2.5d", P=64, c=4)])
+def test_baseline_must_match_node_and_replication_configuration(tmp_path, changed):
+    serial = dict(layout="cannon", P=16, c=1, mode="sequential", workers=None,
+                  group=0, pair=0, size=16, repeat=0, time_s=4)
+    parallel = dict(serial, mode="threaded", workers=2, **changed)
+    with pytest.raises(ValueError, match="Missing sequential baseline"):
+        analysis.summarize_results(write_results(tmp_path / "mismatch.csv", [serial, parallel]))
+
+
+def test_old_csv_without_grid_columns_preserves_unknown_configuration(tmp_path):
+    fields = ("algorithm", "mode", "workers", "group", "pair", "size", "repeat", "time_s",
+              "max_abs_error", "frobenius_relative_error")
+    row = dict(algorithm="cannon", mode="sequential", workers=None, group=0, pair=0,
+               size=16, repeat=0, time_s=2, max_abs_error=0, frobenius_relative_error=0)
+    summary = analysis.summarize_results(write_results(tmp_path / "old.csv", [row], fields))
+    assert summary[0]["P"] is None and summary[0]["c"] is None
+    assert summary[0]["layout"] == "cannon"
+    assert summary[0]["speedup"] == 1

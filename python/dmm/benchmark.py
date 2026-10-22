@@ -19,11 +19,11 @@ from time import get_clock_info, perf_counter
 import numpy as np
 
 from dmm import _native
-from dmm.config import BenchmarkConfig
+from dmm.config import BenchmarkConfig, LAYOUT_MODULES
 from dmm.datasets import load_manifest, load_pair, load_reference
 from dmm.execution import Executor, SerialExecutor, ThreadExecutor
 
-CSV_FIELDS = ("algorithm", "mode", "workers", "group", "pair", "size", "repeat", "time_s",
+CSV_FIELDS = ("layout", "P", "c", "mode", "workers", "group", "pair", "size", "repeat", "time_s",
               "max_abs_error", "frobenius_relative_error")
 
 
@@ -71,7 +71,7 @@ def save_run_metadata(config: BenchmarkConfig) -> Path:
         "git": git,
         "native": {
             "backend": "pybind11", "compiler": _native.compiler, "build_type": _native.build_type,
-            "execution": f"P={config.P}, c={config.c}; BSP supersteps with copied messages",
+            "execution": "Per-case logical grids; BSP supersteps with copied messages",
             "input_dtype": "float32", "reference_dtype": "float64",
             "timer": {"name": "time.perf_counter", **vars(get_clock_info("perf_counter"))},
             "timing": "algorithm call including input/output copies; excludes worker startup and validation",
@@ -133,20 +133,22 @@ def _validate_product(C: np.ndarray, reference: np.ndarray) -> dict:
 def run_benchmark(config: BenchmarkConfig) -> int:
     """Run all configured combinations, reusing a pool for each worker count."""
     config.validate()
-    algorithms = {}
-    for name in config.algorithms:
+    algorithms = []
+    for case in config.cases:
+        name = case["layout"]
+        module_name = LAYOUT_MODULES[name]
         try:
-            algorithm = import_module(f"dmm.algorithms.{name}")
+            algorithm = import_module(f"dmm.algorithms.{module_name}")
         except ModuleNotFoundError as error:
-            if error.name != f"dmm.algorithms.{name}":
+            if error.name != f"dmm.algorithms.{module_name}":
                 raise
             raise ValueError(f"Algorithm {name!r} is not implemented") from error
         for size in config.sizes:
             try:
-                algorithm.validate_size(size, P=config.P, c=config.c)
+                algorithm.validate_size(size, P=case["P"], c=case["c"])
             except ValueError as error:
                 raise ValueError(f"Algorithm {name!r} does not support size {size}: {error}") from error
-        algorithms[name] = partial(algorithm.matmul, P=config.P, c=config.c)
+        algorithms.append((case, partial(algorithm.matmul, P=case["P"], c=case["c"])))
 
     dataset = load_manifest(config.data_dir)
     for name in ("groups", "sizes"):
@@ -165,8 +167,8 @@ def run_benchmark(config: BenchmarkConfig) -> int:
         def run_with_executor(executor: Executor, mode: str, workers: int | None = None) -> int:
             completed = 0
             with executor:
-                for (algorithm, matmul), group_id, size in product(
-                    algorithms.items(), config.groups, config.sizes,
+                for (case, matmul), group_id, size in product(
+                    algorithms, config.groups, config.sizes,
                 ):
                     A, B = load_pair(config.data_dir, group_id, size)
                     reference = load_reference(config.data_dir, group_id, size)
@@ -180,7 +182,7 @@ def run_benchmark(config: BenchmarkConfig) -> int:
                             raise ValueError("measured time must be positive and finite")
                         errors = _validate_product(C, reference)
                         write_result({
-                            "algorithm": algorithm,
+                            **case,
                             "mode": mode,
                             "workers": workers,
                             "group": group_id,

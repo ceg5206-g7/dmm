@@ -7,7 +7,7 @@ from pathlib import Path
 import yaml
 import numpy as np
 
-ALGORITHMS = ("cannon", "fox", "strassen", "cw")
+LAYOUT_MODULES = {"ring": "ring", "cannon": "cannon", "2.5d": "two_point_five_d"}
 MODES = ("sequential", "threaded")
 
 
@@ -41,6 +41,23 @@ def validate_value_range(value_range) -> None:
         raise ValueError("value_range must contain two finite FP32 bounds with low <= high")
 
 
+def validate_case(case: dict) -> None:
+    """Validate the layout-specific logical grid without requiring its algorithm."""
+    from dmm import _native
+
+    if not isinstance(case, dict) or set(case) != {"layout", "P", "c"}:
+        raise ValueError("each case requires exactly these fields: layout, P, c")
+    if not isinstance(case["layout"], str) or case["layout"] not in LAYOUT_MODULES:
+        raise ValueError(f"case layout must be one of {tuple(LAYOUT_MODULES)}")
+    for name in ("P", "c"):
+        if type(case[name]) is not int or case[name] <= 0:
+            raise ValueError(f"case {name} must be a positive integer")
+    if case["layout"] != "2.5d" and case["c"] != 1:
+        raise ValueError(f"{case['layout']} requires c = 1")
+    if case["layout"] != "ring":
+        _native.grid_size(case["P"], case["c"])
+
+
 @dataclass
 class DatasetConfig:
     """Specify reproducible matrix generation in a new directory."""
@@ -60,28 +77,31 @@ class DatasetConfig:
 
 @dataclass
 class BenchmarkConfig:
-    """Describe the Cartesian product of algorithms, modes, groups and sizes."""
+    """Run each layout/P/c case across shared modes, groups and sizes."""
 
     data_dir: Path
     output: Path
-    algorithms: list[str]
+    cases: list[dict]
     modes: dict[str, dict]
     groups: list[int]
     sizes: list[int]
     repeats: int = 1
     warmups: int = 5
-    P: int = 16
-    c: int = 1
 
     def validate(self) -> None:
         if type(self.repeats) is not int or self.repeats < 1:
             raise ValueError("repeats must be a positive integer")
         if type(self.warmups) is not int or self.warmups < 0:
             raise ValueError("warmups must be a non-negative integer")
-        for name in ("P", "c"):
-            if type(getattr(self, name)) is not int or getattr(self, name) <= 0:
-                raise ValueError(f"{name} must be a positive integer")
-        _selection("algorithms", self.algorithms, ALGORITHMS)
+        if not isinstance(self.cases, list) or not self.cases:
+            raise ValueError("cases must be a non-empty list")
+        seen = set()
+        for case in self.cases:
+            validate_case(case)
+            key = (case["layout"], case["P"], case["c"])
+            if key in seen:
+                raise ValueError("cases must be unique")
+            seen.add(key)
         _dimensions(self.groups, self.sizes)
         if any(left >= right for left, right in zip(self.sizes, self.sizes[1:])):
             raise ValueError("sizes must be in ascending order")

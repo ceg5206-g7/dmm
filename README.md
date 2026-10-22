@@ -152,11 +152,43 @@ a positive square P and c=1. The shared `dmm::grid_size(P, c)` C++ helper
 (and `_native.grid_size` binding) validates 2D/2.5D grids with P=c*q*q and c dividing q;
 for example (64,4) and (256,4) are valid 2.5D grids, but Cannon rejects c>1.
 
-Benchmark YAML accepts scalar `P: 64` and `c: 1` for the entire run. Omitted
-values default to 16 and 1. The runner passes both to size validation, warmups
-and measured calls, and saves them in JSON run metadata. Invalid algorithm grids
-fail before dataset loading or result creation. Use separate runs/output paths
-for different configurations; the timing CSV schema is unchanged.
+Benchmark YAML lists each layout/P/c configuration separately. All cases run
+across the shared `sizes`, `groups`, and `modes`, in list order within each mode:
+
+```yaml
+data_dir: ../data
+output: ../results/mixed.csv
+cases:
+  - {layout: cannon, P: 16, c: 1}
+  - {layout: cannon, P: 64, c: 1}
+  - {layout: cannon, P: 256, c: 1}
+modes:
+  sequential: {}
+  threaded:
+    workers: [2]
+groups: [0]
+sizes: [16, 32]
+repeats: 3
+warmups: 5
+```
+
+Run the ready-to-use example with `uv run dmm bench --config configs/benchmark_mixed.yaml`,
+then `uv run dmm analyze --input results/benchmark_mixed.csv`.
+Each case requires exactly `layout`, `P`, and `c`; duplicate cases and old global
+`algorithms`/`P`/`c` keys are rejected. Convert an old `algorithms: [cannon], P: 64, c: 1`
+configuration to `cases: [{layout: cannon, P: 64, c: 1}]`.
+Valid layouts are `ring`, `cannon`, and `2.5d`. Ring requires c=1; Cannon requires
+c=1 and square P; 2.5D requires P=c*q*q and c dividing q. For example a future
+`{layout: 2.5d, P: 64, c: 4}` case is valid, but its algorithm is not yet implemented.
+Only Cannon currently runs. Missing layouts and invalid configurations fail during
+preflight, before dataset loading or output creation; no case is silently skipped.
+
+The dispatcher loads `dmm.algorithms.ring`, `dmm.algorithms.cannon`, or
+`dmm.algorithms.two_point_five_d`. Each module provides
+`validate_size(size, *, P, c)` and `matmul(A, B, executor, *, P, c)`.
+Both warmups and measured calls receive that case's P/c. Worker pools are reused
+across cases. CSV rows, summaries, plot series and serial baselines keep
+`layout/P/c` separate; JSON metadata saves the complete ordered case list.
 
 Each call copies A/B into owned C++ matrices and returns an independent NumPy
 output. Copies are included in algorithm-call timing. C++ computation releases
@@ -244,7 +276,7 @@ all block products, worker dispatch/completion per superstep, assembly and outpu
 Input/reference loading, worker creation, warmup, correctness checks and file
 writes are outside timing. One executor is reused for every algorithm/group/size
 at a worker count. The configured mode and worker order is preserved; within
-each mode, algorithms, groups and sizes follow the original Cartesian product.
+each mode, cases, groups and sizes follow their Cartesian product.
 Inputs are marked read-only before calling the algorithm.
 
 Execution uses C++ threads, with no Python process-pool serialization cost.
@@ -261,9 +293,9 @@ not recorded. Partial results do not imply the configured experiment completed.
 Each run writes:
 
 - `benchmark_lite.csv`: one row per measured call, with times in seconds,
-  algorithm/mode/workers/group/pair/size/repeat identifiers, maximum absolute
+  layout/P/c/mode/workers/group/pair/size/repeat identifiers, maximum absolute
   error and Frobenius relative error. Serial `workers` is empty; `pair` is the
-  size index in the dataset manifest, as in `matmul`. P and c are recorded in the accompanying JSON metadata.
+  size index in the dataset manifest, as in `matmul`. Each row records its own layout, P and c.
 - `benchmark_lite.json`: the original `started_at`, `benchmark`, `dataset`,
   `environment` and `git` structure, plus a `native` section for compiler/build
   type, FP types, timing boundary and timer details. Settings include warmups. A dirty flag does not preserve local changes.
@@ -271,8 +303,9 @@ Each run writes:
 
 Analysis averages repetitions within each group, then averages group means.
 Speedup is the matching sequential mean divided by the threaded mean, using
-the same algorithm, size and groups. Summary fields, aggregation and plots
-match `matmul`; CSV files without `repeat` are treated as one measurement. Duplicate samples, incomplete repeats, missing baselines,
+the same layout, P, c, size and groups. CSV files without `repeat` are treated as one measurement. Historical CSV files
+with an `algorithm` column are still readable; their unknown P/c are left blank
+in summaries rather than inferred. Duplicate samples, incomplete repeats, missing baselines,
 mismatched groups and invalid times are rejected. There is no assumed speedup.
 
 ## Dataset compatibility with matmul
@@ -353,6 +386,5 @@ comparisons, different block sizes, zero/identity/ones/cancellation, repeated ru
 worker errors, invalid arrays, output ownership and concurrent calls, dataset
 validation, executor lifecycle, warmup/timing boundaries and result comparability.
 The original configuration, CLI, environment, benchmark and analysis tests are
-ported with FP and native-executor adjustments. Algorithm names remain
-`cannon`, `fox`, `strassen`, `cw`; unimplemented algorithms fail before setup,
-as in `matmul`. Only Cannon is currently implemented.
+ported with FP and native-executor adjustments. Layout names are `ring`, `cannon`, `2.5d`; unimplemented layouts fail before setup.
+Only Cannon is currently implemented.

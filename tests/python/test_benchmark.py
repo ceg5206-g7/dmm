@@ -16,7 +16,7 @@ import pytest
 
 
 def make_config(data_dir, output, **options):
-    values = dict(data_dir=data_dir, output=output, algorithms=["cannon"],
+    values = dict(data_dir=data_dir, output=output, cases=[{"layout": "cannon", "P": 16, "c": 1}],
                   modes={"sequential": {}}, groups=[0], sizes=[16], warmups=0)
     values.update(options)
     return BenchmarkConfig(**values)
@@ -31,7 +31,7 @@ def data_dir(tmp_path):
 
 def test_csv_writer_flushes_header_and_rows_and_closes_on_failure(tmp_path):
     output = tmp_path / "results" / "test.csv"
-    result = dict(algorithm="cannon", mode="sequential", workers=None,
+    result = dict(layout="cannon", P=16, c=1, mode="sequential", workers=None,
                   group=0, pair=0, size=16, repeat=0, time_s=0.25, max_abs_error=0, frobenius_relative_error=0)
     with pytest.raises(RuntimeError, match="calculation failed"):
         with benchmark.open_results_csv(output) as write_result:
@@ -252,9 +252,9 @@ def test_each_repeat_is_validated_and_failure_preserves_only_completed_measureme
 
 
 @pytest.mark.parametrize("options,message", [
-    ({"algorithms": ["unknown"]}, "algorithms"),
-    ({"algorithms": ["cannon", "cannon"]}, "unique"),
-    ({"algorithms": "cannon"}, "list"),
+    ({"cases": [dict(layout="unknown", P=16, c=1)]}, "layout"),
+    ({"cases": [dict(layout="cannon", P=16, c=1)] * 2}, "unique"),
+    ({"cases": "cannon"}, "list"),
     ({"modes": {"unknown": {}}}, "mode"),
     ({"modes": {}}, "non-empty"),
     ({"modes": []}, "mapping"),
@@ -303,7 +303,7 @@ def test_all_combinations_reuse_one_executor_per_mode_and_process_count(data_dir
     created = []
     calls = []
     checks = []
-    expected_checks = [("cannon", 16), ("cannon", 32), ("fox", 16), ("fox", 32)]
+    expected_checks = [("cannon", 16), ("cannon", 32), ("ring", 16), ("ring", 32)]
 
     def create_serial():
         created.append(None)
@@ -331,7 +331,7 @@ def test_all_combinations_reuse_one_executor_per_mode_and_process_count(data_dir
     # The second name exercises dispatch; only Cannon is currently implemented.
     monkeypatch.setattr(benchmark, "import_module", load_algorithm)
     output = tmp_path / "combinations.csv"
-    config = make_config(data_dir, output, algorithms=["cannon", "fox"], groups=[0, 1], sizes=[16, 32],
+    config = make_config(data_dir, output, cases=[dict(layout="cannon", P=16, c=1), dict(layout="ring", P=16, c=1)], groups=[0, 1], sizes=[16, 32],
                          modes={"sequential": {}, "threaded": {"workers": [1, 2]}})
     assert benchmark.run_benchmark(config) == 24
     assert created == [None, 1, 2]
@@ -342,17 +342,17 @@ def test_all_combinations_reuse_one_executor_per_mode_and_process_count(data_dir
         (algorithm, mode, count, str(group), str(size))
         for (mode, count), algorithm, group, size in product(
             [("sequential", ""), ("threaded", "1"), ("threaded", "2")],
-            ["cannon", "fox"], [0, 1], [16, 32],
+            ["cannon", "ring"], [0, 1], [16, 32],
         )
     ]
-    assert [(r["algorithm"], r["mode"], r["workers"], r["group"], r["size"]) for r in rows] == expected
+    assert [(r["layout"], r["mode"], r["workers"], r["group"], r["size"]) for r in rows] == expected
     assert calls == [(f"dmm.algorithms.{algorithm}", int(size)) for algorithm, _, _, _, size in expected]
 
 
 def test_unimplemented_algorithm_fails_before_creating_output(data_dir, tmp_path):
     output = tmp_path / "results" / "missing.csv"
-    with pytest.raises(ValueError, match="fox.*not implemented"):
-        benchmark.run_benchmark(make_config(data_dir, output, algorithms=["cannon", "fox"]))
+    with pytest.raises(ValueError, match="ring.*not implemented"):
+        benchmark.run_benchmark(make_config(data_dir, output, cases=[dict(layout="cannon", P=16, c=1), dict(layout="ring", P=16, c=1)]))
     assert not output.parent.exists()
 
 
@@ -423,9 +423,9 @@ def test_metadata_captures_configuration_manifest_and_environment(data_dir, tmp_
     assert path == output.with_suffix(".json")
     assert before <= datetime.fromisoformat(metadata["started_at"]) <= after
     assert metadata["benchmark"] == {
-        "data_dir": str(data_dir), "output": str(output), "algorithms": ["cannon"],
+        "data_dir": str(data_dir), "output": str(output), "cases": [{"layout": "cannon", "P": 16, "c": 1}],
         "modes": {"sequential": {}, "threaded": {"workers": [1, 2]}},
-        "groups": [1, 0], "sizes": [16, 32], "repeats": 3, "warmups": 0, "P": 16, "c": 1,
+        "groups": [1, 0], "sizes": [16, 32], "repeats": 3, "warmups": 0,
     }
     assert metadata["dataset"] == json.loads((data_dir / "manifest.json").read_text())
     assert metadata["environment"] == {
@@ -592,7 +592,7 @@ def test_later_algorithms_are_validated_before_any_experiment_runs(data_dir, tmp
 
         def validate_size(size, **options):
             checks.append((name, size))
-            if name == "fox" and size == 32:
+            if name == "ring" and size == 32:
                 raise ValueError("test size limit is 16")
 
         return SimpleNamespace(matmul=unexpected_setup, validate_size=validate_size)
@@ -601,10 +601,10 @@ def test_later_algorithms_are_validated_before_any_experiment_runs(data_dir, tmp
     for name in ("save_run_metadata", "open_results_csv", "SerialExecutor", "ThreadExecutor", "load_pair"):
         monkeypatch.setattr(benchmark, name, unexpected_setup)
     output = tmp_path / "results" / "invalid.csv"
-    config = make_config(data_dir, output, algorithms=["cannon", "fox"], sizes=[16, 32])
-    with pytest.raises(ValueError, match="fox.*size 32.*test size limit is 16"):
+    config = make_config(data_dir, output, cases=[dict(layout="cannon", P=16, c=1), dict(layout="ring", P=16, c=1)], sizes=[16, 32])
+    with pytest.raises(ValueError, match="ring.*size 32.*test size limit is 16"):
         benchmark.run_benchmark(config)
-    assert checks == [("cannon", 16), ("cannon", 32), ("fox", 16), ("fox", 32)]
+    assert checks == [("cannon", 16), ("cannon", 32), ("ring", 16), ("ring", 32)]
     assert not output.parent.exists()
 
 
@@ -619,16 +619,82 @@ def test_benchmark_passes_grid_to_algorithm_and_records_metadata(data_dir, tmp_p
 
     monkeypatch.setattr(cannon, "matmul", multiply)
     output = tmp_path / f"P{P}.csv"
-    config = make_config(data_dir, output, P=P, c=1, warmups=1)
+    config = make_config(data_dir, output, cases=[dict(layout="cannon", P=P, c=1)], warmups=1)
     assert benchmark.run_benchmark(config) == 1
     assert calls == [(P, 1), (P, 1)]
     settings = json.loads(output.with_suffix(".json").read_text())["benchmark"]
-    assert (settings["P"], settings["c"]) == (P, 1)
+    assert (settings["cases"][0]["P"], settings["cases"][0]["c"]) == (P, 1)
 
 
 @pytest.mark.parametrize("P,c", [(3, 1), (64, 4), (16, 4)])
 def test_invalid_algorithm_grid_fails_before_output(data_dir, tmp_path, P, c):
     output = tmp_path / "results" / "invalid.csv"
     with pytest.raises(ValueError, match="c|grid"):
-        benchmark.run_benchmark(make_config(data_dir, output, P=P, c=c))
+        benchmark.run_benchmark(make_config(data_dir, output, cases=[dict(layout="cannon", P=P, c=c)]))
+    assert not output.parent.exists()
+
+
+def test_mixed_grid_yaml_runs_real_cannon_and_keeps_results_separate(data_dir, tmp_path):
+    import yaml
+    from dmm.config import load_benchmark_config
+    from dmm.analysis import analyze_results, summarize_results
+
+    cases = [dict(layout="cannon", P=P, c=1) for P in (16, 64, 256)]
+    values = dict(data_dir=str(data_dir), output="mixed.csv", cases=cases,
+                  modes={"sequential": {}, "threaded": {"workers": [2]}},
+                  groups=[0, 1], sizes=[16, 32], repeats=2, warmups=1)
+    path = tmp_path / "mixed.yaml"
+    path.write_text(yaml.safe_dump(values, sort_keys=False))
+    config = load_benchmark_config(path)
+    assert benchmark.run_benchmark(config) == 48
+    with config.output.open(newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert {int(row["P"]) for row in rows} == {16, 64, 256}
+    assert [(row["layout"], int(row["P"]), int(row["c"])) for row in rows[:24]] == [
+        ("cannon", P, 1) for P in (16, 64, 256) for _ in range(8)]
+    saved = json.loads(config.output.with_suffix(".json").read_text())
+    assert saved["benchmark"]["cases"] == cases
+    summary = summarize_results(config.output)
+    assert len(summary) == 12
+    assert all(row["group_count"] == 2 and row["repeats"] == 2 for row in summary)
+    assert len({(r["layout"], r["P"], r["c"], r["mode"], r["size"]) for r in summary}) == 12
+    assert (analyze_results(config.output) / "time.png").is_file()
+
+
+def test_dispatch_preserves_layout_and_replication_per_case(data_dir, tmp_path, monkeypatch):
+    cases = [dict(layout="cannon", P=16, c=1), dict(layout="2.5d", P=64, c=4)]
+    checks, calls = [], []
+
+    def load(module):
+        def validate_size(size, *, P, c):
+            checks.append((module, size, P, c))
+
+        def multiply(a, b, executor, *, P, c):
+            calls.append((module, P, c))
+            return (a.astype(np.float64) @ b.astype(np.float64)).astype(np.float32)
+
+        return SimpleNamespace(validate_size=validate_size, matmul=multiply)
+
+    monkeypatch.setattr(benchmark, "import_module", load)
+    output = tmp_path / "dispatch.csv"
+    assert benchmark.run_benchmark(make_config(data_dir, output, cases=cases, warmups=1)) == 2
+    assert checks == [("dmm.algorithms.cannon", 16, 16, 1),
+                      ("dmm.algorithms.two_point_five_d", 16, 64, 4)]
+    assert calls == [("dmm.algorithms.cannon", 16, 1)] * 2 + [
+                    ("dmm.algorithms.two_point_five_d", 64, 4)] * 2
+    with output.open(newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert [(r["layout"], r["P"], r["c"]) for r in rows] == [
+        ("cannon", "16", "1"), ("2.5d", "64", "4")]
+
+
+@pytest.mark.parametrize("case", [dict(layout="ring", P=16, c=1), dict(layout="2.5d", P=64, c=4)])
+def test_unimplemented_layout_after_valid_case_fails_before_any_execution(data_dir, tmp_path, monkeypatch, case):
+    def unexpected(*args, **kwargs):
+        pytest.fail("preflight must check every case before execution")
+
+    monkeypatch.setattr(cannon, "matmul", unexpected)
+    output = tmp_path / "missing" / "run.csv"
+    with pytest.raises(ValueError, match="not implemented"):
+        benchmark.run_benchmark(make_config(data_dir, output, cases=[dict(layout="cannon", P=16, c=1), case]))
     assert not output.parent.exists()

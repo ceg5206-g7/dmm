@@ -28,7 +28,7 @@ def dataset(tmp_path):
 
 def benchmark_config(dataset, tmp_path):
     return BenchmarkConfig(dataset.data_dir, tmp_path / "run.csv",
-                           ["cannon"], {"sequential": {}, "threaded": {"workers": [1, 2]}},
+                           [{"layout": "cannon", "P": 16, "c": 1}], {"sequential": {}, "threaded": {"workers": [1, 2]}},
                            [0, 1], [4, 12], repeats=2, warmups=1)
 
 
