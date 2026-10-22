@@ -110,7 +110,7 @@ def test_binding_preserves_matmul_tile_order(workers):
     b = np.ones((4, 4), dtype=np.float32)
     expected = [[1, 0, 1, 0], [0, 1, 0, 1], [1, 0, 1, 0], [0, 1, 0, 1]]
     assert _native.GRID == 4
-    np.testing.assert_array_equal(_native.cannon(a, b, make_executor(workers)), expected)
+    np.testing.assert_array_equal(_native.cannon_traced(a, b, make_executor(workers), native_layout=True)[0], expected)
 
 
 @pytest.mark.parametrize("workers", [0, 1, 2])

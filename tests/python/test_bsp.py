@@ -12,8 +12,8 @@ def test_traced_cannon_matches_product_and_hand_counts(make_executor):
     A = rng.uniform(-1, 1, (8, 8)).astype(np.float32)
     B = rng.uniform(-1, 1, (8, 8)).astype(np.float32)
     with make_executor() as executor:
-        C, trace = cannon.matmul_traced(A, B, executor)
-        np.testing.assert_array_equal(C, cannon.matmul(A, B, executor))
+        C, trace = cannon.matmul_traced(A, B, executor, native_layout=True)
+        np.testing.assert_allclose(C, cannon.matmul(A, B, executor), atol=1e-4, rtol=1e-3)
     np.testing.assert_allclose(C, A.astype(np.float64) @ B, rtol=1e-5, atol=1e-5)
 
     words, flops = 4, 16  # Block size 2.
@@ -32,7 +32,7 @@ def test_traced_cannon_matches_product_and_hand_counts(make_executor):
 def test_bsp_cost_recomputes_without_rerunning():
     A = np.ones((4, 4), dtype=np.float32)
     with SerialExecutor() as executor:
-        _, trace = cannon.matmul_traced(A, A, executor)
+        _, trace = cannon.matmul_traced(A, A, executor, native_layout=True)
     counts = count(trace)
     assert bsp_cost(counts) == 8
     assert bsp_cost(counts, g=10, l=100) == 8 + 10 * 8 + 100 * 5
@@ -58,9 +58,10 @@ def test_configured_cannon_grid_controls_product_and_trace(P, workers):
     q = int(P**0.5)
     counts = count(trace)
     assert trace.nodes == P
-    assert counts.supersteps == q + 1
-    assert counts.total_flops == 2 * 32**3
-    assert counts.messages == 2 * (q - 1) * (q + P)
+    assert counts.supersteps == q + (7 if P > 1 else 1)
+    padded = ((32 + P - 1) // P) * P
+    assert counts.total_flops == 2 * padded**3
+    assert counts.messages == 2 * (q - 1) * (q + P) + 3 * P * (q - 1)
 
 
 @pytest.mark.parametrize("P,c", [(0, 1), (-1, 1), (True, 1), (4.0, 1), ("4", 1),
@@ -88,10 +89,47 @@ def test_trace_exposes_per_node_payload_peaks_and_count_takes_maximum(workers):
     A = np.ones((8, 8), dtype=np.float32)
     executor = ThreadExecutor(workers) if workers else SerialExecutor()
     with executor:
-        _, trace = cannon.matmul_traced(A, A, executor)
+        _, trace = cannon.matmul_traced(A, A, executor, native_layout=True)
     assert len(trace.peak_words) == 16
     assert all(len(step.peak_words) == 16 for step in trace.supersteps)
     # Three local tiles plus at most two incoming and two outgoing tile copies.
     assert max(trace.peak_words) == 7 * 2**2
     assert count(trace).peak_words == max(trace.peak_words)
     assert max(count(step).peak_words for step in trace.supersteps) == count(trace).peak_words
+
+
+@pytest.mark.parametrize("n", [17, 65, 257])
+def test_common_padding_crops_and_reports_executed_dimensions(n):
+    rng = np.random.default_rng(5206)
+    A = rng.uniform(-1, 1, (n, n)).astype(np.float32)
+    B = rng.uniform(-1, 1, (n, n)).astype(np.float32)
+    cannon.validate_size(n)
+    with ThreadExecutor(2) as executor:
+        C, trace = cannon.matmul_traced(A, B, executor)
+    np.testing.assert_allclose(C, A.astype(np.float64) @ B.astype(np.float64), atol=1e-4, rtol=1e-3)
+    assert trace.original_size == n
+    assert trace.padded_size == ((n + 15) // 16) * 16
+    assert count(trace).total_flops == 2 * trace.padded_size**3
+    for step in trace.supersteps:
+        for message in step.messages:
+            assert message.region is not None
+            assert message.region.rows * message.region.cols == message.words
+            assert message.region.row + message.region.rows <= trace.padded_size
+            assert message.region.col + message.region.cols <= trace.padded_size
+
+
+def test_common_and_native_costs_have_explicit_conversion_boundary_and_hand_counts():
+    from dmm.bsp import count_native
+    A = np.ones((16, 16), dtype=np.float32)
+    with SerialExecutor() as executor:
+        C, trace = cannon.matmul_traced(A, A, executor)
+        native_C, native_trace = cannon.matmul_traced(A, A, executor, native_layout=True)
+    np.testing.assert_array_equal(C, native_C)
+    end = count(trace)
+    body = count_native(trace)
+    standalone = count(native_trace)
+    assert (end.supersteps, end.total_flops, end.critical_flops) == (11, 8192, 512)
+    assert (end.total_words, end.critical_words, end.messages) == (2496, 164, 264)
+    assert (body.supersteps, body.total_words, body.critical_words) == (5, 1920, 128)
+    assert (body.total_flops, body.messages, body.peak_words) == (
+        standalone.total_flops, standalone.messages, standalone.peak_words)

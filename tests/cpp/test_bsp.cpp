@@ -80,6 +80,12 @@ TEST(BspValidationTest, RejectsInvalidSendsAndReceives) {
     EXPECT_THROW(in_superstep([&](dmm::Node& node) { node.receive(2, 0, 0); }), std::out_of_range);
     EXPECT_THROW(in_superstep([&](dmm::Node& node) { node.receive(1, 0, 0); }), std::logic_error);
     EXPECT_THROW(in_superstep([&](dmm::Node& node) {
+        node.send(1, 0, payload, dmm::ElementRegion{0, 0, 1, 1});
+    }), std::invalid_argument);
+    EXPECT_THROW(in_superstep([&](dmm::Node& node) {
+        node.send(1, 0, payload, dmm::ElementRegion{std::numeric_limits<std::size_t>::max(), 0, 1, 2});
+    }), std::invalid_argument);
+    EXPECT_THROW(in_superstep([&](dmm::Node& node) {
         node.send(1, 0, payload);
         node.send(1, 0, payload);
     }), std::logic_error);

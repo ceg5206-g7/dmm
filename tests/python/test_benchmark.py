@@ -570,9 +570,14 @@ def test_invalid_algorithm_size_fails_before_any_experiment_setup(tmp_path, monk
     for name in ("save_run_metadata", "open_results_csv", "SerialExecutor", "ThreadExecutor",
                  "load_pair", "load_reference", "benchmark_pair", "perf_counter"):
         monkeypatch.setattr(benchmark, name, unexpected_setup)
+    def reject_seven(size, **options):
+        if size == 7:
+            raise ValueError("test size limit is 4")
+
+    monkeypatch.setattr(cannon, "validate_size", reject_seven)
     config = make_config(data_dir, output, sizes=[4, 7],
                          modes={"sequential": {}, "threaded": {"workers": [1]}})
-    with pytest.raises(ValueError, match="cannon.*size 7.*divisible by 4"):
+    with pytest.raises(ValueError, match="cannon.*size 7.*test size limit"):
         benchmark.run_benchmark(config)
     if existing_results:
         assert output.read_text() == "keep existing results"

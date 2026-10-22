@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <functional>
 #include <map>
+#include <optional>
 #include <span>
 #include <string>
 #include <utility>
@@ -14,9 +15,14 @@
 
 namespace dmm {
 
+struct ElementRegion {
+    std::size_t row, col, rows, cols;
+};
+
 // Payloads are counted in FP32 words; a multiply-add counts as two FLOPs.
 struct MessageRecord {
     std::size_t source, destination, tag, words;
+    std::optional<ElementRegion> region;
 };
 
 struct SuperstepRecord {
@@ -30,6 +36,7 @@ struct Trace {
     std::size_t nodes = 0;
     std::vector<SuperstepRecord> supersteps;
     std::vector<std::size_t> peak_words;
+    std::size_t original_size = 0, padded_size = 0;
 };
 
 // h(r, s) is the larger of the words node r sends and receives in superstep s.
@@ -47,6 +54,7 @@ struct Counts {
 
 Counts count(const SuperstepRecord& superstep);
 Counts count(const Trace& trace);
+Counts count_native(const Trace& trace);
 
 // Per-FLOP, per-word and per-superstep costs.
 struct CostParameters {
@@ -60,6 +68,7 @@ namespace detail {
 struct Message {
     std::size_t destination, tag;
     Buffer payload;
+    std::optional<ElementRegion> region;
 };
 
 struct NodeState {
@@ -76,7 +85,8 @@ public:
     std::size_t id() const noexcept { return id_; }
     std::size_t nodes() const noexcept { return nodes_; }
     // Copies the payload; the destination receives it in the next superstep.
-    void send(std::size_t destination, std::size_t tag, std::span<const float> payload);
+    void send(std::size_t destination, std::size_t tag, std::span<const float> payload,
+              std::optional<ElementRegion> region = std::nullopt);
     // Moves out a message delivered at the end of the previous superstep.
     Buffer receive(std::size_t source, std::size_t tag, std::size_t words);
     Buffer buffer(std::size_t words = 0) const { return Buffer(state_.memory, std::vector<float>(words)); }
@@ -99,6 +109,7 @@ public:
     Buffer buffer(std::size_t node, std::size_t words = 0) const;
     NodeBuffers buffers(std::size_t words = 0) const;
     std::size_t live_words(std::size_t node) const;
+    bool owns(std::size_t node, const Buffer& buffer) const;
     // Runs body once per node, then delivers the sent messages. Every delivered
     // message must be received during the following superstep.
     void superstep(std::string label, Executor& executor, const std::function<void(Node&)>& body);

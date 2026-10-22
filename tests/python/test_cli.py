@@ -214,12 +214,19 @@ def test_cli_rejects_unsupported_algorithm_sizes_before_creating_results(tmp_pat
         "data_dir": "data", "output": "results/invalid.csv", "cases": [{"layout": "cannon", "P": 16, "c": 1}],
         "modes": {"sequential": {}}, "groups": [0], "sizes": [4, 7],
     }))
+    from dmm.algorithms import cannon
+
+    def reject_seven(size, **options):
+        if size == 7:
+            raise ValueError("test size limit is 4")
+
+    monkeypatch.setattr(cannon, "validate_size", reject_seven)
     monkeypatch.setattr(sys, "argv", ["dmm", "bench", "--config", str(path)])
     with pytest.raises(SystemExit) as error:
         cli.main()
     assert error.value.code == 1
     captured = capsys.readouterr()
-    assert "cannon" in captured.err and "size 7" in captured.err and "divisible by 4" in captured.err
+    assert "cannon" in captured.err and "size 7" in captured.err and "test size limit" in captured.err
     assert "Traceback" not in captured.err and "Saved" not in captured.out
     assert not (tmp_path / "results").exists()
 

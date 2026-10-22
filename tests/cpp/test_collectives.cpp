@@ -62,6 +62,9 @@ TEST(TreeCollectivesTest, RejectsInvalidParticipantsAndLengthsBeforeAnySuperstep
     values[1].clear();
     const std::vector<dmm::TreeGroup> groups{{0, 1}};
     EXPECT_THROW(dmm::tree_reduce_sum(machine, executor, groups, values, 0), std::invalid_argument);
+    dmm::Bsp other(4);
+    auto foreign = other.buffers(1);
+    EXPECT_THROW(dmm::tree_broadcast(machine, executor, groups, foreign, 0), std::invalid_argument);
     values.pop_back();
     EXPECT_THROW(dmm::tree_broadcast(machine, executor, groups, values, 0), std::invalid_argument);
 }

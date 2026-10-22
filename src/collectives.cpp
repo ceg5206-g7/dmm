@@ -15,6 +15,9 @@ std::vector<TreeNode> plan(const Bsp& machine, std::span<const TreeGroup> groups
                            const NodeBuffers& values, bool reduce) {
     if (groups.empty() || values.size() != machine.nodes())
         throw std::invalid_argument("tree groups must be non-empty and values must cover all nodes");
+    for (std::size_t id = 0; id < machine.nodes(); ++id)
+        if (!machine.owns(id, values[id]))
+            throw std::invalid_argument("tree payload belongs to a different logical node");
     std::vector<TreeNode> nodes(machine.nodes());
     for (const auto& group : groups) {
         if (group.empty()) throw std::invalid_argument("tree group must have a root");

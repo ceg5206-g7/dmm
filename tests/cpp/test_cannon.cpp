@@ -93,7 +93,7 @@ TEST_P(CannonTest, PreservesTileAccumulationOrder) {
     // The four starting k indices leave different FP32 cancellation residuals.
     const std::vector<float> expected{1, 0, 1, 0, 0, 1, 0, 1,
                                     1, 0, 1, 0, 0, 1, 0, 1};
-    EXPECT_EQ(cannon.matmul(a, b, *executor).values, expected);
+    EXPECT_EQ(cannon.run_native(a, b, *executor).product.values, expected);
 }
 
 INSTANTIATE_TEST_SUITE_P(Workers, CannonTest, ::testing::Values(0, 1, 2, 5),
@@ -107,7 +107,7 @@ TEST(CannonValidationTest, RejectsMismatchedUnsupportedAndMalformedMatrices) {
     for (std::size_t n : {1, 3, 17, 65}) {
         SCOPED_TRACE(::testing::Message() << "size=" << n);
         dmm::Matrix<float> unsupported(n);
-        EXPECT_THROW(cannon.matmul(unsupported, unsupported, executor), std::invalid_argument);
+        EXPECT_THROW(cannon.run_native(unsupported, unsupported, executor), std::invalid_argument);
     }
     a.values.pop_back();
     EXPECT_THROW(cannon.matmul(a, a, executor), std::invalid_argument);
@@ -150,7 +150,7 @@ TEST(ValidationTest, PreservesFP64ReferencePrecision) {
     EXPECT_THROW(dmm::validate(result, expected), std::runtime_error);
 }
 
-TEST(CannonDispatchTest, RunsSixteenNodesInEachOfFiveSupersteps) {
+TEST(CannonDispatchTest, RunsSixteenNodesInEachOfElevenCommonPathSupersteps) {
     struct RecordingExecutor final : dmm::Executor {
         std::vector<std::size_t> batches;
         void for_each(std::size_t count, const std::function<void(std::size_t)>& task) override {
@@ -163,7 +163,7 @@ TEST(CannonDispatchTest, RunsSixteenNodesInEachOfFiveSupersteps) {
     std::fill(b.values.begin(), b.values.end(), 1);
     const dmm::Cannon cannon;
     EXPECT_NO_THROW(dmm::validate(cannon.matmul(a, b, executor), constant_reference(4, 4)));
-    EXPECT_EQ(executor.batches, (std::vector<std::size_t>(5, 16)));
+    EXPECT_EQ(executor.batches, (std::vector<std::size_t>(11, 16)));
 }
 
 class CannonTraceTest : public ::testing::TestWithParam<std::size_t> {};
@@ -177,7 +177,7 @@ TEST_P(CannonTraceTest, MatchesHandComputedCommunication) {
         dmm::Matrix<float> a(n), b(n);
         std::fill(a.values.begin(), a.values.end(), 1);
         std::fill(b.values.begin(), b.values.end(), 1);
-        const auto [product, trace] = dmm::Cannon{}.run(a, b, *executor);
+        const auto [product, trace] = dmm::Cannon{}.run_native(a, b, *executor);
         EXPECT_NO_THROW(dmm::validate(product, constant_reference(n, static_cast<double>(n))));
         const auto block = n / 4, words = block * block, flops = 2 * words * block;
         ASSERT_EQ(trace.nodes, 16u);
@@ -196,7 +196,7 @@ TEST_P(CannonTraceTest, MatchesHandComputedCommunication) {
 TEST_P(CannonTraceTest, SkewsAndShiftsAlongGridRowsAndColumns) {
     auto executor = dmm::make_executor(GetParam());
     dmm::Matrix<float> a(8), b(8);
-    const auto trace = dmm::Cannon{}.run(a, b, *executor).trace;
+    const auto trace = dmm::Cannon{}.run_native(a, b, *executor).trace;
     const auto messages_from = [&](std::size_t step, std::size_t source) {
         std::vector<std::pair<std::size_t, std::size_t>> sent; // (destination, tag)
         for (const auto& message : trace.supersteps[step].messages)
@@ -249,7 +249,7 @@ TEST(ConfigurableCannonTest, MatchesReferenceAndCountsAcrossGrids) {
     for (std::size_t P : {1, 4, 16, 64, 256}) {
         SCOPED_TRACE(P);
         const auto q = dmm::grid_size(P), block = 32 / q, words = block * block;
-        const auto result = dmm::Cannon{P, 1}.run(a, b, executor);
+        const auto result = dmm::Cannon{P, 1}.run_native(a, b, executor);
         EXPECT_NO_THROW(dmm::validate(result.product, expected));
         EXPECT_EQ(result.trace.nodes, P);
         const auto counts = dmm::count(result.trace);
@@ -271,6 +271,6 @@ TEST(GridConfigTest, ValidatesTwoAndTwoPointFiveDimensionalGrids) {
             {0, 1}, {16, 0}, {3, 1}, {16, 4}, {64, 2}, {65, 4}})
         EXPECT_THROW(dmm::grid_size(P, c), std::invalid_argument);
     EXPECT_THROW((dmm::Cannon{64, 4}.run(a, a, executor)), std::invalid_argument);
-    EXPECT_THROW((dmm::Cannon{256, 1}.run(dmm::Matrix<float>(8), dmm::Matrix<float>(8), executor)),
+    EXPECT_THROW((dmm::Cannon{256, 1}.run_native(dmm::Matrix<float>(8), dmm::Matrix<float>(8), executor)),
                  std::invalid_argument);
 }

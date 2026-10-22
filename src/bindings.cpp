@@ -1,4 +1,5 @@
 #include "dmm/cannon.hpp"
+#include "dmm/sharding.hpp"
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -44,7 +45,7 @@ std::size_t positive_integer(const py::object& value, const char* name) {
 }
 
 std::pair<py::array_t<float>, dmm::Trace> cannon_traced(const Array& a, const Array& b, dmm::Executor& executor,
-        const py::object& P, const py::object& c) {
+        const py::object& P, const py::object& c, bool native_layout) {
     const dmm::Cannon algorithm{positive_integer(P, "P"), positive_integer(c, "c")};
     dmm::grid_size(algorithm.P, algorithm.c);
     if (algorithm.c != 1) throw std::invalid_argument("Cannon requires c = 1");
@@ -56,7 +57,7 @@ std::pair<py::array_t<float>, dmm::Trace> cannon_traced(const Array& a, const Ar
     dmm::Trace trace;
     {
         py::gil_scoped_release release;
-        auto result = algorithm.run(left, right, executor);
+        auto result = native_layout ? algorithm.run_native(left, right, executor) : algorithm.run(left, right, executor);
         const auto& values = result.product.values;
         std::copy(values.begin(), values.end(), destination);
         trace = std::move(result.trace);
@@ -66,7 +67,7 @@ std::pair<py::array_t<float>, dmm::Trace> cannon_traced(const Array& a, const Ar
 
 py::array_t<float> cannon(const Array& a, const Array& b, dmm::Executor& executor,
         const py::object& P, const py::object& c) {
-    return cannon_traced(a, b, executor, P, c).first;
+    return cannon_traced(a, b, executor, P, c, false).first;
 }
 } // namespace
 
@@ -76,6 +77,9 @@ PYBIND11_MODULE(_native, module) {
     module.def("grid_size", [](const py::object& P, const py::object& c) {
         return dmm::grid_size(positive_integer(P, "P"), positive_integer(c, "c"));
     }, py::arg("P"), py::arg("c") = 1);
+    module.def("padded_size", [](const py::object& n, const py::object& P) {
+        return dmm::padded_size(positive_integer(n, "size"), positive_integer(P, "P"));
+    }, py::arg("size"), py::arg("P"));
     module.attr("compiler") = __VERSION__;
     module.attr("build_type") = DMM_BUILD_TYPE;
     py::class_<dmm::Executor>(module, "Executor");
@@ -103,13 +107,19 @@ PYBIND11_MODULE(_native, module) {
        py::arg("executor"), py::kw_only(), py::arg("P") = 16, py::arg("c") = 1);
     module.def("cannon_traced", &cannon_traced,
        py::arg("a").noconvert(), py::arg("b").noconvert(),
-       py::arg("executor"), py::kw_only(), py::arg("P") = 16, py::arg("c") = 1);
+       py::arg("executor"), py::kw_only(), py::arg("P") = 16, py::arg("c") = 1, py::arg("native_layout") = false);
 
+    py::class_<dmm::ElementRegion>(module, "ElementRegion")
+        .def_readonly("row", &dmm::ElementRegion::row)
+        .def_readonly("col", &dmm::ElementRegion::col)
+        .def_readonly("rows", &dmm::ElementRegion::rows)
+        .def_readonly("cols", &dmm::ElementRegion::cols);
     py::class_<dmm::MessageRecord>(module, "MessageRecord")
         .def_readonly("source", &dmm::MessageRecord::source)
         .def_readonly("destination", &dmm::MessageRecord::destination)
         .def_readonly("tag", &dmm::MessageRecord::tag)
-        .def_readonly("words", &dmm::MessageRecord::words);
+        .def_readonly("words", &dmm::MessageRecord::words)
+        .def_readonly("region", &dmm::MessageRecord::region);
     py::class_<dmm::SuperstepRecord>(module, "SuperstepRecord")
         .def_readonly("label", &dmm::SuperstepRecord::label)
         .def_readonly("flops", &dmm::SuperstepRecord::flops)
@@ -118,7 +128,9 @@ PYBIND11_MODULE(_native, module) {
     py::class_<dmm::Trace>(module, "Trace")
         .def_readonly("nodes", &dmm::Trace::nodes)
         .def_readonly("supersteps", &dmm::Trace::supersteps)
-        .def_readonly("peak_words", &dmm::Trace::peak_words);
+        .def_readonly("peak_words", &dmm::Trace::peak_words)
+        .def_readonly("original_size", &dmm::Trace::original_size)
+        .def_readonly("padded_size", &dmm::Trace::padded_size);
     py::class_<dmm::Counts>(module, "Counts")
         .def_readonly("supersteps", &dmm::Counts::supersteps)
         .def_readonly("total_flops", &dmm::Counts::total_flops)
@@ -129,6 +141,7 @@ PYBIND11_MODULE(_native, module) {
         .def_readonly("peak_words", &dmm::Counts::peak_words);
     module.def("count", py::overload_cast<const dmm::Trace&>(&dmm::count), py::arg("trace"));
     module.def("count", py::overload_cast<const dmm::SuperstepRecord&>(&dmm::count), py::arg("superstep"));
+    module.def("count_native", &dmm::count_native, py::arg("trace"));
     module.def("bsp_cost", [](const dmm::Counts& counts, double w, double g, double l) {
         return dmm::bsp_cost(counts, {w, g, l});
     }, py::arg("counts"), py::kw_only(), py::arg("w") = 1.0, py::arg("g") = 0.0, py::arg("l") = 0.0);

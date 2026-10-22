@@ -43,6 +43,13 @@ Counts count(const Trace& trace) {
     return counts;
 }
 
+Counts count_native(const Trace& trace) {
+    Counts counts;
+    for (const auto& step : trace.supersteps)
+        if (step.label != "input_conversion" && step.label != "output_conversion") counts += count(step);
+    return counts;
+}
+
 double bsp_cost(const Counts& counts, const CostParameters& parameters) {
     for (const auto value : {parameters.w, parameters.g, parameters.l})
         if (!std::isfinite(value) || value < 0)
@@ -52,13 +59,20 @@ double bsp_cost(const Counts& counts, const CostParameters& parameters) {
            parameters.l * static_cast<double>(counts.supersteps);
 }
 
-void Node::send(std::size_t destination, std::size_t tag, std::span<const float> payload) {
+void Node::send(std::size_t destination, std::size_t tag, std::span<const float> payload,
+                std::optional<ElementRegion> region) {
+    if (region && (region->rows == 0 || region->cols == 0 ||
+        region->rows > std::numeric_limits<std::size_t>::max() / region->cols ||
+        region->rows * region->cols != payload.size() ||
+        region->row > std::numeric_limits<std::size_t>::max() - region->rows ||
+        region->col > std::numeric_limits<std::size_t>::max() - region->cols))
+        throw std::invalid_argument("message region must match payload size");
     if (destination >= nodes_) throw std::out_of_range("message destination is not a logical node");
     if (destination == id_) throw std::invalid_argument("a node keeps its own data instead of sending it");
     for (const auto& message : state_.outbox)
         if (message.destination == destination && message.tag == tag)
             throw std::logic_error("duplicate message destination and tag in one superstep");
-    state_.outbox.push_back({destination, tag, Buffer(state_.memory, {payload.begin(), payload.end()})});
+    state_.outbox.push_back({destination, tag, Buffer(state_.memory, {payload.begin(), payload.end()}), region});
 }
 
 Buffer Node::receive(std::size_t source, std::size_t tag, std::size_t words) {
@@ -90,6 +104,10 @@ NodeBuffers Bsp::buffers(std::size_t words) const {
 
 std::size_t Bsp::live_words(std::size_t node) const { return states_.at(node).memory->live; }
 
+bool Bsp::owns(std::size_t node, const Buffer& buffer) const {
+    return states_.at(node).memory == buffer.ledger_;
+}
+
 void Bsp::superstep(std::string label, Executor& executor, const std::function<void(Node&)>& body) {
     const auto nodes = states_.size();
     for (const auto& state : states_) state.memory->step_peak = state.memory->live;
@@ -105,7 +123,7 @@ void Bsp::superstep(std::string label, Executor& executor, const std::function<v
         auto& state = states_[source];
         record.flops[source] = std::exchange(state.flops, 0);
         for (auto& message : state.outbox) {
-            record.messages.push_back({source, message.destination, message.tag, message.payload.size()});
+            record.messages.push_back({source, message.destination, message.tag, message.payload.size(), message.region});
             message.payload.rebind(states_[message.destination].memory);
             states_[message.destination].inbox.emplace(std::pair{source, message.tag}, std::move(message.payload));
         }

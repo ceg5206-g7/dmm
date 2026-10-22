@@ -9,12 +9,14 @@ namespace dmm {
 
 inline constexpr std::size_t GRID = 4;
 
-// P = q*q logical nodes: one skew superstep, then q multiply supersteps.
+// Common row-shard route with padding and conversions; the native body has
+// one skew superstep followed by q multiply supersteps on P=q*q logical nodes.
 // GRID is retained only as the default-grid compatibility constant.
 struct Cannon {
     std::size_t P = 16;
     std::size_t c = 1;
     Matrix<float> matmul(const Matrix<float>& a, const Matrix<float>& b, Executor& executor) const;
+    Traced run_native(const Matrix<float>& a, const Matrix<float>& b, Executor& executor) const;
     Traced run(const Matrix<float>& a, const Matrix<float>& b, Executor& executor) const;
 };
 

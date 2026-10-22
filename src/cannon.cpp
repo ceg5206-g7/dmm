@@ -1,83 +1,105 @@
 #include "dmm/cannon.hpp"
 #include "dmm/gemm.hpp"
+#include "dmm/sharding.hpp"
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <string>
 #include <utility>
-#include <vector>
 
 namespace dmm {
 namespace {
+enum Tag : std::size_t { A_BLOCK, B_BLOCK, C_BLOCK };
+std::size_t node_at(std::size_t row, std::size_t col, std::size_t q) { return row % q * q + col % q; }
 
-enum Tag : std::size_t { A_BLOCK, B_BLOCK };
-
-// Node-private blocks; node code reads and writes only its own entry.
-struct Local {
-    Buffer a, b, c;
-};
-
-std::size_t node_at(std::size_t row, std::size_t col, std::size_t grid) { return row % grid * grid + col % grid; }
-
-Buffer load_block(Node& node, const Matrix<float>& matrix, std::size_t row, std::size_t col, std::size_t block) {
-    const auto view = matrix.block(row * block, col * block, block);
-    auto values = node.buffer(block * block);
-    for (std::size_t i = 0; i < block; ++i) std::copy_n(&view(i, 0), block, values.data() + i * block);
-    return values;
-}
-
-} // namespace
-
-Traced Cannon::run(const Matrix<float>& a, const Matrix<float>& b, Executor& executor) const {
+void check_inputs(const Matrix<float>& a, const Matrix<float>& b) {
     if (a.size != b.size || a.values.size() != detail::elements<float>(a.size) ||
         b.values.size() != detail::elements<float>(b.size))
         throw std::invalid_argument("inputs must be matching square matrices");
-    const auto grid = grid_size(P, c);
-    if (c != 1) throw std::invalid_argument("Cannon requires c = 1");
-    if (a.size % grid != 0)
-        throw std::invalid_argument("Cannon matrix size must be divisible by " + std::to_string(grid));
-    const auto n = a.size, block = n / grid, words = block * block;
-    std::vector<Local> locals(grid * grid);
-    Bsp machine(locals.size());
+}
 
-    // Node (i, j) starts with A_ij and B_ij, then skews A left by i and B up by j.
+NodeBuffers multiply_blocks(Bsp& machine, Executor& executor, NodeBuffers a,
+                             NodeBuffers b, std::size_t n, std::size_t q) {
+    const auto block = n / q, words = block * block;
+    auto c = machine.buffers(words);
     machine.superstep("skew", executor, [&](Node& node) {
-        const auto i = node.id() / grid, j = node.id() % grid;
-        auto& local = locals[node.id()];
-        local.a = load_block(node, a, i, j, block);
-        local.b = load_block(node, b, i, j, block);
-        local.c = node.buffer(words);
-        if (i != 0) node.send(node_at(i, j + grid - i, grid), A_BLOCK, local.a);
-        if (j != 0) node.send(node_at(i + grid - j, j, grid), B_BLOCK, local.b);
+        const auto id = node.id(), i = id / q, j = id % q;
+        if (i != 0) node.send(node_at(i, j + q - i, q), A_BLOCK, a[id],
+                              ElementRegion{i * block, j * block, block, block});
+        if (j != 0) node.send(node_at(i + q - j, j, q), B_BLOCK, b[id],
+                              ElementRegion{i * block, j * block, block, block});
     });
-    // Round s multiplies A_{i,k} B_{k,j} with k = (i + j + s) % grid, then shifts A left and B up.
-    for (std::size_t round = 0; round < grid; ++round)
+    for (std::size_t round = 0; round < q; ++round)
         machine.superstep("multiply", executor, [&](Node& node) {
-            const auto i = node.id() / grid, j = node.id() % grid;
-            auto& local = locals[node.id()];
+            const auto id = node.id(), i = id / q, j = id % q, k = (i + j + round) % q;
             if (round == 0) {
-                if (i != 0) local.a = node.receive(node_at(i, j + i, grid), A_BLOCK, words);
-                if (j != 0) local.b = node.receive(node_at(i + j, j, grid), B_BLOCK, words);
+                if (i != 0) a[id] = node.receive(node_at(i, j + i, q), A_BLOCK, words);
+                if (j != 0) b[id] = node.receive(node_at(i + j, j, q), B_BLOCK, words);
             } else {
-                local.a = node.receive(node_at(i, j + 1, grid), A_BLOCK, words);
-                local.b = node.receive(node_at(i + 1, j, grid), B_BLOCK, words);
+                a[id] = node.receive(node_at(i, j + 1, q), A_BLOCK, words);
+                b[id] = node.receive(node_at(i + 1, j, q), B_BLOCK, words);
             }
-            gemm_add(block, block, block, local.a, block, local.b, block, local.c, block);
+            gemm_add(block, block, block, a[id], block, b[id], block, c[id], block);
             node.compute(2 * words * block);
-            if (round + 1 < grid) {
-                node.send(node_at(i, j + grid - 1, grid), A_BLOCK, local.a);
-                node.send(node_at(i + grid - 1, j, grid), B_BLOCK, local.b);
+            if (round + 1 < q) {
+                node.send(node_at(i, j + q - 1, q), A_BLOCK, a[id],
+                          ElementRegion{i * block, k * block, block, block});
+                node.send(node_at(i + q - 1, j, q), B_BLOCK, b[id],
+                          ElementRegion{k * block, j * block, block, block});
             }
         });
-    auto trace = machine.finish();
+    return c;
+}
 
-    Matrix<float> output(n);
-    for (std::size_t id = 0; id < locals.size(); ++id) {
-        const auto row = id / grid, col = id % grid;
+NodeBuffers native_blocks(Bsp& machine, const Matrix<float>& input, std::size_t q) {
+    const auto block = input.size / q;
+    auto values = machine.buffers(block * block);
+    for (std::size_t id = 0; id < values.size(); ++id)
         for (std::size_t i = 0; i < block; ++i)
-            std::copy_n(locals[id].c.data() + i * block, block,
-                        output.values.data() + (row * block + i) * n + col * block);
-    }
+            std::copy_n(input.values.data() + (id / q * block + i) * input.size + id % q * block,
+                        block, values[id].data() + i * block);
+    return values;
+}
+} // namespace
+
+Traced Cannon::run(const Matrix<float>& a, const Matrix<float>& b, Executor& executor) const {
+    check_inputs(a, b);
+    const auto q = grid_size(P, c);
+    if (c != 1) throw std::invalid_argument("Cannon requires c = 1");
+    Bsp machine(P);
+    auto rows_a = make_row_shards(machine, a);
+    auto left = rows_to_blocks(machine, executor, rows_a, 1, A_BLOCK);
+    rows_a.values.clear();
+    auto rows_b = make_row_shards(machine, b);
+    auto right = rows_to_blocks(machine, executor, rows_b, 1, B_BLOCK);
+    rows_b.values.clear();
+    const auto n = left.size;
+    auto tiles = multiply_blocks(machine, executor, std::move(left.values), std::move(right.values), n, q);
+    BlockShards product{a.size, n, 1, std::move(tiles)};
+    auto rows_c = blocks_to_rows(machine, executor, product, C_BLOCK);
+    product.values.clear();
+    auto trace = machine.finish();
+    trace.original_size = a.size; trace.padded_size = n;
+    return {gather_row_shards(rows_c), std::move(trace)};
+}
+
+Traced Cannon::run_native(const Matrix<float>& a, const Matrix<float>& b, Executor& executor) const {
+    check_inputs(a, b);
+    const auto q = grid_size(P, c);
+    if (c != 1) throw std::invalid_argument("Cannon requires c = 1");
+    if (a.size % q != 0)
+        throw std::invalid_argument("native Cannon matrix size must be divisible by " + std::to_string(q));
+    Bsp machine(P);
+    auto left = native_blocks(machine, a, q), right = native_blocks(machine, b, q);
+    auto tiles = multiply_blocks(machine, executor, std::move(left), std::move(right), a.size, q);
+    Matrix<float> output(a.size);
+    const auto block = a.size / q;
+    for (std::size_t id = 0; id < P; ++id)
+        for (std::size_t i = 0; i < block; ++i)
+            std::copy_n(tiles[id].data() + i * block, block,
+                        output.values.data() + (id / q * block + i) * a.size + id % q * block);
+    auto trace = machine.finish();
+    trace.original_size = a.size; trace.padded_size = a.size;
     return {std::move(output), std::move(trace)};
 }
 

@@ -9,8 +9,8 @@ Cannon uses a configurable q × q logical grid (P=q², default P=16) on a
 BSP runtime: each node owns its A/B/C blocks, and the initial skew and the
 round shifts are real copied messages. Communication is counted per superstep,
 not delayed; BSP costs are computed from those counts afterwards (see
-[Communication model](#communication-model)). Common row-slice input/output
-conversion, 1D ring and 2.5D remain future work. Per-node payload memory
+[Communication model](#communication-model)). Common row-shard input/output conversion and zero padding are implemented;
+1D ring and 2.5D remain future work. Per-node payload memory
 peaks are tracked for local tiles and messages. Wall-clock
 timings describe the single-machine implementation, including message copies.
 
@@ -147,8 +147,8 @@ for another context. Destruction also closes any remaining workers.
 
 Inputs must be finite, non-empty, square, matching native FP32 arrays. Other
 dtypes are rejected; convert explicitly in Python. Read-only, transposed and
-negative-stride inputs are supported. Sizes must be divisible by q=sqrt(P); padding
-is not implemented. P is independent of the worker count H. Cannon requires
+negative-stride inputs are supported. Any positive size is accepted on the common route: inputs are zero-padded
+to a multiple of P and outputs cropped. Traces report original_size and padded_size. P is independent of the worker count H. Cannon requires
 a positive square P and c=1. The shared `dmm::grid_size(P, c)` C++ helper
 (and `_native.grid_size` binding) validates 2D/2.5D grids with P=c*q*q and c dividing q;
 for example (64,4) and (256,4) are valid 2.5D grids, but Cannon rejects c>1.
@@ -208,19 +208,21 @@ copying a view does not allocate or copy matrix elements. Access uses
 builds assert element indices. Keep the source matrix alive and do not replace
 or reallocate its storage while a view is in use.
 
-The C++ implementation runs Cannon on P=q² logical nodes, node `(i, j)`
-having id `qi + j`, in q+1 supersteps:
+The native Cannon body runs on P=q² logical nodes, node `(i, j)`
+having id `qi + j`, in q+1 supersteps. The default common route first converts
+A and B from row shards (two supersteps each) and converts C back afterwards
+(two more); P=1 conversions are local with no extra steps. The native body is:
 
-1. `skew`: each node copies its own A_ij and B_ij out of the input (the native
-   distribution, not counted as communication) and zeroes its C tile. A_ij is sent
+1. `skew`: each node starts with its owned A_ij and B_ij; C is initialized to zero. A_ij is sent
    to `(i, j - i)` and B_ij to `(i - j, j)`; row 0 of A and column 0 of B stay put.
 2. `multiply` × q: each node receives the blocks sent to it, accumulates
    `A_{i,k} B_{k,j}` with `k = (i + j + round) % q` using the shared blocked `gemm_add` kernel (tile 32),
    and, in the first q−1 rounds, sends A to its left and B to its upper neighbour.
-3. After the last superstep, the C tiles are assembled into a newly allocated output.
+3. The common route converts C tiles back to row shards, then the host adapter
+   gathers/crops the result. Native-layout test adapters assemble directly.
 
-The accumulation order per output element is the same as before messages were
-introduced, so FP32 results are unchanged.
+Accumulation order is fixed for a given padded layout; padding can change the
+block schedule. Results are verified against the independent FP64 reference.
 
 ## Communication model
 
@@ -252,7 +254,7 @@ which `bsp_cost(counts, w=, g=, l=)` evaluates. No sleep or busy-wait injects ne
 time: wall-clock measures only the real computation and copies, while `g` and `l`
 are model parameters, so a γ/λ sweep recomputes costs from saved counts.
 
-For the default P=16 and block size `b = n / 4`, Cannon's counts are
+For the native body at P=16 and block size `b = n_padded / 4`, Cannon's counts are
 
 | Superstep | Messages | Total words | max h | max F |
 | --- | --- | --- | --- | --- |
@@ -406,3 +408,12 @@ packing buffers, replicas and messages share one per-node memory ledger.
 is their maximum, and count aggregation takes max rather than sum for memory.
 Host Matrix/oracle storage is excluded from logical-node payload; whole-process
 memory requires a separate measurement.
+
+Common row shards and base-layer block conversion are provided by
+`include/dmm/sharding.hpp`. Both directions copy real messages with global
+`ElementRegion` rectangles. Packing and output buffers use the node memory ledger.
+`count_native(trace)` excludes exactly input/output conversion from the full
+trace, keeping the same actual padded dimensions. At n=16, P=16, the full path
+has S=11, F_total=8192, W_crit=512, C_total=2496 and C_crit=164; the native body
+has S=5, C_total=1920 and C_crit=128. `matmul_traced(..., native_layout=True)` is
+an explicit unpadded native-input test adapter requiring n divisible by sqrt(P).
