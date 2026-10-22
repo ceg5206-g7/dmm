@@ -214,7 +214,7 @@ having id `qi + j`, in q+1 supersteps:
    distribution, not counted as communication) and zeroes its C tile. A_ij is sent
    to `(i, j - i)` and B_ij to `(i - j, j)`; row 0 of A and column 0 of B stay put.
 2. `multiply` × q: each node receives the blocks sent to it, accumulates
-   `A_{i,k} B_{k,j}` with `k = (i + j + round) % q` using scalar `i-k-j` loops,
+   `A_{i,k} B_{k,j}` with `k = (i + j + round) % q` using the shared blocked `gemm_add` kernel (tile 32),
    and, in the first q−1 rounds, sends A to its left and B to its upper neighbour.
 3. After the last superstep, the C tiles are assembled into a newly allocated output.
 
@@ -388,3 +388,7 @@ validation, executor lifecycle, warmup/timing boundaries and result comparabilit
 The original configuration, CLI, environment, benchmark and analysis tests are
 ported with FP and native-executor adjustments. Layout names are `ring`, `cannon`, `2.5d`; unimplemented layouts fail before setup.
 Only Cannon is currently implemented.
+
+The shared rectangular FP32 kernel is `include/dmm/gemm.hpp`; all layouts
+must use its fixed tile 32 and common compilation flags. It accepts row strides,
+accumulates into C, supports tile tails, and performs no allocation.

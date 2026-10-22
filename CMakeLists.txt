@@ -38,6 +38,7 @@ if(BUILD_TESTING)
   FetchContent_MakeAvailable(googletest)
 
   add_executable(dmm_tests
+    tests/cpp/test_gemm.cpp
     tests/cpp/test_matrix.cpp
     tests/cpp/test_matrix_block_view.cpp
     tests/cpp/test_bsp.cpp

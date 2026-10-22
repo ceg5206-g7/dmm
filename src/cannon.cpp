@@ -1,4 +1,5 @@
 #include "dmm/cannon.hpp"
+#include "dmm/gemm.hpp"
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -23,17 +24,6 @@ std::vector<float> load_block(const Matrix<float>& matrix, std::size_t row, std:
     std::vector<float> values(block * block);
     for (std::size_t i = 0; i < block; ++i) std::copy_n(&view(i, 0), block, values.data() + i * block);
     return values;
-}
-
-void multiply_add(Local& local, std::size_t block) {
-    for (std::size_t i = 0; i < block; ++i) {
-        auto* output_row = local.c.data() + i * block;
-        for (std::size_t k = 0; k < block; ++k) {
-            const auto value = local.a[i * block + k];
-            for (std::size_t j = 0; j < block; ++j)
-                output_row[j] += value * local.b[k * block + j];
-        }
-    }
 }
 
 } // namespace
@@ -72,7 +62,7 @@ Traced Cannon::run(const Matrix<float>& a, const Matrix<float>& b, Executor& exe
                 local.a = node.receive(node_at(i, j + 1, grid), A_BLOCK, words);
                 local.b = node.receive(node_at(i + 1, j, grid), B_BLOCK, words);
             }
-            multiply_add(local, block);
+            gemm_add(block, block, block, local.a, block, local.b, block, local.c, block);
             node.compute(2 * words * block);
             if (round + 1 < grid) {
                 node.send(node_at(i, j + grid - 1, grid), A_BLOCK, local.a);
