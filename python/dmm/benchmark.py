@@ -27,18 +27,8 @@ CSV_FIELDS = ("layout", "P", "c", "mode", "workers", "group", "pair", "size", "r
               "max_abs_error", "frobenius_relative_error")
 
 
-def save_run_metadata(config: BenchmarkConfig) -> Path:
-    """Save an experiment snapshot beside its CSV without replacing any file."""
-    config.validate()
-    output = Path(config.output).resolve()
-    if output.suffix.lower() == ".json":
-        raise ValueError("Benchmark output must have a different filename from its .json metadata")
-    metadata_path = output.with_suffix(".json")
-    settings = asdict(config)
-    settings["data_dir"] = str(Path(config.data_dir).resolve())
-    settings["output"] = str(output)
-    manifest = json.loads((Path(config.data_dir) / "manifest.json").read_text(encoding="utf-8"))
-
+def source_revision() -> dict:
+    """Record the source checkout revision, independently of the working directory."""
     git = {"commit": None, "dirty": None}
     source_root = Path(__file__).resolve().parents[2]
     try:
@@ -53,6 +43,23 @@ def save_run_metadata(config: BenchmarkConfig) -> Path:
         git = {"commit": commit, "dirty": bool(status)}
     except (OSError, subprocess.SubprocessError):
         pass
+
+    return git
+
+
+def save_run_metadata(config: BenchmarkConfig) -> Path:
+    """Save an experiment snapshot beside its CSV without replacing any file."""
+    config.validate()
+    output = Path(config.output).resolve()
+    if output.suffix.lower() == ".json":
+        raise ValueError("Benchmark output must have a different filename from its .json metadata")
+    metadata_path = output.with_suffix(".json")
+    settings = asdict(config)
+    settings["data_dir"] = str(Path(config.data_dir).resolve())
+    settings["output"] = str(output)
+    manifest = json.loads((Path(config.data_dir) / "manifest.json").read_text(encoding="utf-8"))
+
+    git = source_revision()
 
     metadata = {
         "started_at": datetime.now(timezone.utc).isoformat(),

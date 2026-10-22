@@ -429,3 +429,20 @@ shape and FLOP records. Set `Trace.coverage` to its uniform block partition
 and run `dmm.bsp.validate_coverage(trace)` to reject missing/duplicate blocks,
 wrong shapes and inconsistent node work. The independent FP64 oracle remains
 necessary; trace metadata is not included in payload-memory budgets.
+
+
+For real trace capture and offline BSP scans:
+
+```sh
+uv run dmm model --config configs/model_smoke.yaml
+# Use another YAML/output_dir to change gamma/lambda/budgets without rerunning:
+uv run dmm model --config configs/my_model.yaml --traces results/model_smoke/traces
+```
+
+`model.csv` stores normalized T_BSP/w0 as T_model; t_measured stays empty.
+Raw trace JSONs, input/file hashes and a correctness CSV support audit/reuse.
+Phase/native costs, budget feasibility, ties and infeasible cells are explicit.
+See [model commands and limits](doc/docs/model.md). The full proposal profile
+is 24 executions/192 scenarios/144 selection cells, and still requires the
+unimplemented ring/2.5D algorithms; its preflight refuses to fabricate results.
+Preallocated measurement, calibration and held-out residual checks remain work.

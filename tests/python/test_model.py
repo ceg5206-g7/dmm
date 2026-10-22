@@ -1,0 +1,188 @@
+import copy
+import csv
+from dataclasses import replace
+import json
+from pathlib import Path
+
+import numpy as np
+import pytest
+import yaml
+
+from dmm.algorithms import cannon
+from dmm.config import DatasetConfig, ModelConfig, load_model_config
+from dmm.datasets import generate_dataset
+from dmm.model import (build_model_tables, capture_traces, load_traces, run_model,
+                       trace_record, validate_trace_record, _winner)
+from dmm.execution import SerialExecutor
+
+
+@pytest.fixture
+def config(tmp_path):
+    data = tmp_path / "data"
+    generate_dataset(DatasetConfig(data, 5206, [0], [4, 12], [-1, 1]))
+    return ModelConfig(data, tmp_path / "report", [dict(layout="cannon", P=P, c=1) for P in (4, 16)],
+                       [4, 12], gammas=[1, 10], lambdas=[100], budgets=[8, 32])
+
+
+def test_main_profile_has_24_executions_192_scenarios_and_144_budget_cells():
+    cfg = load_model_config(Path(__file__).parents[2] / "configs/model.yaml")
+    assert len(cfg.sizes) * len(cfg.cases) == 24
+    assert len(cfg.sizes) * len(cfg.cases) * len(cfg.gammas) * len(cfg.lambdas) == 192
+    assert len(cfg.sizes) * 3 * len(cfg.gammas) * len(cfg.lambdas) * len(cfg.budgets) == 144
+    assert cfg.budgets == [8, 32]
+
+
+def test_model_yaml_paths_and_numeric_validation(config, tmp_path):
+    values = dict(data_dir="data", output_dir="results", cases=config.cases, sizes=config.sizes)
+    path = tmp_path / "model.yaml"
+    path.write_text(yaml.safe_dump(values))
+    loaded = load_model_config(path)
+    assert loaded.data_dir == tmp_path / "data"
+    assert loaded.output_dir == tmp_path / "results"
+    for field, value in (("gammas", [True]), ("lambdas", [float("inf")]), ("budgets", [0]),
+                         ("gammas", [1, 1]), ("workers", -1), ("sizes", [12, 4])):
+        changed = dict(values, **{field: value})
+        path.write_text(yaml.safe_dump(changed))
+        with pytest.raises(ValueError):
+            load_model_config(path)
+
+
+def test_real_capture_and_recompute_never_reruns_algorithms_or_loads_inputs(config, monkeypatch):
+    output = run_model(config)
+    with (output / "model.csv").open(newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert len(rows) == 8
+    assert all(row["t_measured"] == "" and row["H"] == "1" for row in rows)
+    for row in rows:
+        expected = int(row["W_crit"]) + float(row["gamma"]) * int(row["C_crit"]) + float(row["lambda"]) * int(row["S"])
+        assert float(row["T_model"]) == expected
+    with (output / "layout_selection.csv").open(newline="") as handle:
+        choices = list(csv.DictReader(handle))
+    assert len(choices) == 16
+    assert any(r["best"] == "infeasible" for r in choices)
+    assert any(r["best"] != "infeasible" for r in choices)
+    assert all(int(r["P"]) == 16 for r in choices if r["n"] == "4" and r["best"] == "infeasible")
+    metadata = json.loads((output / "model.json").read_text())
+    assert metadata["executed_configurations"] == 4
+    for name in ("layout_selection", "cost_breakdown", "conversion_breakdown", "native_vs_common", "peak_memory"):
+        assert (output / f"{name}.png").read_bytes().startswith(b"\x89PNG")
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("offline sweep must not execute algorithms or load matrices")
+    monkeypatch.setattr(cannon, "matmul_traced", forbidden)
+    import dmm.model as model
+    monkeypatch.setattr(model, "load_pair", forbidden)
+    changed = replace(config, data_dir=Path("does-not-exist"), output_dir=output.with_name("recomputed"), gammas=[100])
+    replay = run_model(changed, output / "traces")
+    with (replay / "model.csv").open(newline="") as handle:
+        replayed = list(csv.DictReader(handle))
+    assert len(replayed) == 4
+    assert all(float(r["gamma"]) == 100 for r in replayed)
+
+
+def test_trace_checksum_and_capture_completeness_are_checked(config):
+    root = capture_traces(config, config.output_dir / "traces")
+    first = next(p for p in root.glob("n*.json"))
+    first.write_text(first.read_text() + " ")
+    with pytest.raises(ValueError, match="checksum"):
+        load_traces(root, config)
+    manifest = json.loads((root / "manifest.json").read_text())
+    manifest["files"].pop()
+    (root / "manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="incomplete"):
+        load_traces(root, config)
+
+
+def _record():
+    A = np.ones((16, 16), dtype=np.float32)
+    with SerialExecutor() as executor:
+        _, trace = cannon.matmul_traced(A, A, executor)
+    return trace_record(trace, dict(layout="cannon", P=16, c=1), 1,
+                        dict(max_abs_error=0, frobenius_relative_error=0), {"A": "0" * 64, "B": "1" * 64})
+
+
+@pytest.mark.parametrize("change", ["missing", "duplicate", "shape", "work", "memory", "message", "schema"])
+def test_offline_validator_rejects_corrupted_audit_records(change):
+    record = _record()
+    step = next(s for s in record["supersteps"] if s["products"])
+    if change == "missing":
+        step["products"].pop()
+    elif change == "duplicate":
+        step["products"].append(copy.deepcopy(step["products"][0]))
+    elif change == "shape":
+        step["products"][0]["m"] = 1
+    elif change == "work":
+        step["flops"][0] = 0
+    elif change == "memory":
+        step["peak_words"] = [0] * 16
+    elif change == "message":
+        sent = next(s for s in record["supersteps"] if s["messages"])
+        sent["messages"].append(copy.deepcopy(sent["messages"][0]))
+    else:
+        record["schema"] = True
+    with pytest.raises(ValueError):
+        validate_trace_record(record)
+
+
+def test_budget_filters_reuse_costs_and_allow_exact_ties(config):
+    record = _record()
+    metrics = validate_trace_record(record)
+    cfg = replace(config, cases=[dict(layout="cannon", P=16, c=1)],
+                  sizes=[16], gammas=[1], lambdas=[100], budgets=[1, 32])
+    rows, phases, choices = build_model_tables([(record, metrics)], cfg)
+    assert len(rows) == 1 and len(choices) == 2
+    assert choices[0]["best"] == "infeasible"
+    assert choices[1]["best"] == "cannon(c=1)"
+    assert choices[0]["M_cap"] == 16
+    assert any(row["phase"] == "native" for row in phases)
+    assert _winner([dict(name="a", cost=5), dict(name="b", cost=5)], "cost") == ("a|b", 5)
+
+
+def test_missing_algorithm_preflight_creates_no_output_and_never_fabricates_counts(config):
+    cfg = replace(config, cases=[dict(layout="cannon", P=4, c=1), dict(layout="ring", P=4, c=1)])
+    with pytest.raises(ValueError, match="not implemented"):
+        run_model(cfg)
+    assert not cfg.output_dir.exists()
+
+
+def test_existing_report_is_preserved(config):
+    config.output_dir.mkdir()
+    sentinel = config.output_dir / "keep.txt"
+    sentinel.write_text("keep")
+    with pytest.raises(FileExistsError):
+        run_model(config)
+    assert sentinel.read_text() == "keep"
+
+
+def test_cli_captures_then_recomputes_after_dataset_is_removed(config, tmp_path):
+    import subprocess
+    import sys
+    cli = str(Path(sys.executable).with_name("dmm"))
+    values = dict(data_dir=str(config.data_dir), output_dir=str(config.output_dir), cases=config.cases,
+                  sizes=[4], gammas=[1], lambdas=[100], budgets=[8, 32])
+    path = tmp_path / "model.yaml"
+    path.write_text(yaml.safe_dump(values))
+    first = subprocess.run([cli, "model", "--config", str(path)], cwd=tmp_path,
+                           capture_output=True, text=True, check=True)
+    assert "Saved model analysis" in first.stdout
+    config.data_dir.rename(config.data_dir.with_name("unused-data"))
+    values.update(output_dir=str(tmp_path / "offline"), gammas=[10, 100])
+    path.write_text(yaml.safe_dump(values))
+    second = subprocess.run([cli, "model", "--config", str(path), "--traces", str(config.output_dir / "traces")],
+                            cwd=tmp_path, capture_output=True, text=True, check=True)
+    assert "Saved model analysis" in second.stdout
+    with (tmp_path / "offline/model.csv").open(newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert len(rows) == 4 and {r["gamma"] for r in rows} == {"10", "100"}
+
+
+def test_manifest_structure_and_requested_execution_identity_are_checked(config):
+    root = capture_traces(config, config.output_dir / "traces")
+    original = json.loads((root / "manifest.json").read_text())
+    with pytest.raises(ValueError, match="workers"):
+        load_traces(root, replace(config, workers=1))
+    for manifest in ([], dict(original, schema=True), dict(original, settings=None),
+                     dict(original, files=[None])):
+        (root / "manifest.json").write_text(json.dumps(manifest))
+        with pytest.raises(ValueError):
+            load_traces(root, config)

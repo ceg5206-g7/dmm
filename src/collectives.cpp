@@ -1,6 +1,7 @@
 #include "dmm/collectives.hpp"
 #include <algorithm>
 #include <bit>
+#include <limits>
 #include <stdexcept>
 
 namespace dmm {
@@ -9,17 +10,21 @@ struct TreeNode {
     bool member = false;
     std::size_t depth = 0, parent = 0, words = 0;
     std::vector<std::size_t> children;
+    std::optional<ElementRegion> region;
 };
 
 std::vector<TreeNode> plan(const Bsp& machine, std::span<const TreeGroup> groups,
-                           const NodeBuffers& values, bool reduce) {
+                           const NodeBuffers& values, bool reduce, std::span<const ElementRegion> regions) {
     if (groups.empty() || values.size() != machine.nodes())
         throw std::invalid_argument("tree groups must be non-empty and values must cover all nodes");
     for (std::size_t id = 0; id < machine.nodes(); ++id)
         if (!machine.owns(id, values[id]))
             throw std::invalid_argument("tree payload belongs to a different logical node");
+    if (!regions.empty() && regions.size() != groups.size())
+        throw std::invalid_argument("tree regions must match the number of groups");
     std::vector<TreeNode> nodes(machine.nodes());
-    for (const auto& group : groups) {
+    for (std::size_t g = 0; g < groups.size(); ++g) {
+        const auto& group = groups[g];
         if (group.empty()) throw std::invalid_argument("tree group must have a root");
         for (std::size_t rank = 0; rank < group.size(); ++rank) {
             const auto id = group[rank];
@@ -28,6 +33,14 @@ std::vector<TreeNode> plan(const Bsp& machine, std::span<const TreeGroup> groups
             nodes[id].member = true;
             nodes[id].depth = std::bit_width(rank + 1) - 1;
             nodes[id].words = values[group[0]].size();
+            if (!regions.empty()) {
+                const auto& r = regions[g];
+                if (r.rows == 0 || r.cols == 0 || r.rows > std::numeric_limits<std::size_t>::max() / r.cols ||
+                    r.rows * r.cols != nodes[id].words || r.row > std::numeric_limits<std::size_t>::max() - r.rows ||
+                    r.col > std::numeric_limits<std::size_t>::max() - r.cols)
+                    throw std::invalid_argument("tree region must match its payload without overflow");
+                nodes[id].region = r;
+            }
             if (reduce && values[id].size() != nodes[id].words)
                 throw std::invalid_argument("reduction payload lengths must match within each group");
             if (rank != 0) {
@@ -41,8 +54,8 @@ std::vector<TreeNode> plan(const Bsp& machine, std::span<const TreeGroup> groups
 } // namespace
 
 void tree_broadcast(Bsp& machine, Executor& executor, std::span<const TreeGroup> groups,
-                    NodeBuffers& values, std::size_t tag) {
-    const auto nodes = plan(machine, groups, values, false);
+                    NodeBuffers& values, std::size_t tag, std::span<const ElementRegion> regions) {
+    const auto nodes = plan(machine, groups, values, false, regions);
     const auto depth = std::max_element(nodes.begin(), nodes.end(), [](const auto& a, const auto& b) {
         return a.depth < b.depth;
     })->depth;
@@ -53,13 +66,13 @@ void tree_broadcast(Bsp& machine, Executor& executor, std::span<const TreeGroup>
             if (!entry.member || entry.depth != level) return;
             auto& own = values[node.id()];
             if (level != 0) own = node.receive(entry.parent, tag, entry.words);
-            for (auto child : entry.children) node.send(child, tag, own);
+            for (auto child : entry.children) node.send(child, tag, own, entry.region);
         });
 }
 
 void tree_reduce_sum(Bsp& machine, Executor& executor, std::span<const TreeGroup> groups,
-                     NodeBuffers& values, std::size_t tag) {
-    const auto nodes = plan(machine, groups, values, true);
+                     NodeBuffers& values, std::size_t tag, std::span<const ElementRegion> regions) {
+    const auto nodes = plan(machine, groups, values, true, regions);
     const auto depth = std::max_element(nodes.begin(), nodes.end(), [](const auto& a, const auto& b) {
         return a.depth < b.depth;
     })->depth;
@@ -75,7 +88,7 @@ void tree_reduce_sum(Bsp& machine, Executor& executor, std::span<const TreeGroup
                 for (std::size_t i = 0; i < own.size(); ++i) own[i] += incoming[i];
                 node.compute(own.size());
             }
-            if (level != 0) node.send(entry.parent, tag, own);
+            if (level != 0) node.send(entry.parent, tag, own, entry.region);
         });
     }
 }

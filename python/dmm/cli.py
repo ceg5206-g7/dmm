@@ -5,8 +5,9 @@ from pathlib import Path
 
 from dmm.analysis import analyze_results
 from dmm.benchmark import run_benchmark
-from dmm.config import load_benchmark_config, load_dataset_config
+from dmm.config import load_benchmark_config, load_dataset_config, load_model_config
 from dmm.datasets import generate_dataset
+from dmm.model import run_model
 
 
 def main() -> None:
@@ -19,6 +20,9 @@ def main() -> None:
     analyze = commands.add_parser("analyze", help="Summarize benchmark results and plot timings and speedup")
     analyze.add_argument("--input", type=Path, required=True, help="Benchmark CSV to analyze")
     analyze.add_argument("--output-dir", type=Path, help="New output directory (default: <input_stem>_analysis beside the CSV)")
+    model = commands.add_parser("model", help="Capture real traces and sweep model costs and budgets")
+    model.add_argument("--config", type=Path, default=Path("configs/model.yaml"))
+    model.add_argument("--traces", type=Path, help="Reuse a complete trace directory without rerunning algorithms")
     args = parser.parse_args()
 
     try:
@@ -30,6 +34,10 @@ def main() -> None:
             config = load_benchmark_config(args.config)
             completed = run_benchmark(config)
             print(f"Saved {completed} benchmark result(s) to {config.output}")
+        elif args.command == "model":
+            config = load_model_config(args.config)
+            output_dir = run_model(config, args.traces)
+            print(f"Saved model analysis to {output_dir}")
         else:
             output_dir = analyze_results(args.input, args.output_dir)
             print(f"Saved analysis to {output_dir}")

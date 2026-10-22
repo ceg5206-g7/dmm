@@ -10,7 +10,8 @@ TEST(TreeCollectivesTest, FourNodeTreeMatchesHandCountsAndNodeOrderWithTwoWorker
     auto values = machine.buffers();
     values[5].assign(std::vector<float>{1, -2, 4});
     values[1].assign(std::vector<float>{99});
-    dmm::tree_broadcast(machine, executor, groups, values, 40);
+    const std::vector<dmm::ElementRegion> regions{{2, 3, 1, 3}};
+    dmm::tree_broadcast(machine, executor, groups, values, 40, regions);
     for (auto id : groups[0]) EXPECT_EQ(values[id], values[5]);
     EXPECT_EQ(values[1], (std::vector<float>{99}));
     auto trace = machine.finish();
@@ -19,6 +20,9 @@ TEST(TreeCollectivesTest, FourNodeTreeMatchesHandCountsAndNodeOrderWithTwoWorker
     EXPECT_EQ(trace.supersteps[0].messages[0].source, 5u);
     EXPECT_EQ(trace.supersteps[0].messages[0].destination, 2u);
     EXPECT_EQ(trace.supersteps[0].messages[1].destination, 6u);
+    ASSERT_TRUE(trace.supersteps[0].messages[0].region.has_value());
+    EXPECT_EQ(trace.supersteps[0].messages[0].region->row, 2u);
+    EXPECT_EQ(trace.supersteps[0].messages[0].region->cols, 3u);
     EXPECT_EQ(trace.supersteps[1].messages[0].source, 2u);
     EXPECT_EQ(trace.supersteps[1].messages[0].destination, 0u);
     dmm::tree_reduce_sum(machine, executor, groups, values, 41);
@@ -59,6 +63,10 @@ TEST(TreeCollectivesTest, RejectsInvalidParticipantsAndLengthsBeforeAnySuperstep
         EXPECT_THROW(dmm::tree_reduce_sum(machine, executor, groups, values, 0), std::invalid_argument);
         EXPECT_TRUE(machine.finish().supersteps.empty());
     }
+    const std::vector<dmm::ElementRegion> wrong_regions{{0, 0, 1, 2}};
+    const std::vector<dmm::TreeGroup> valid_group{{0, 1}};
+    EXPECT_THROW(dmm::tree_broadcast(machine, executor, valid_group, values, 0, wrong_regions), std::invalid_argument);
+    EXPECT_TRUE(machine.finish().supersteps.empty());
     values[1].clear();
     const std::vector<dmm::TreeGroup> groups{{0, 1}};
     EXPECT_THROW(dmm::tree_reduce_sum(machine, executor, groups, values, 0), std::invalid_argument);

@@ -1,7 +1,8 @@
 """Load and validate YAML dataset and benchmark configurations."""
 
-from dataclasses import MISSING, dataclass, fields
+from dataclasses import MISSING, dataclass, field, fields
 import os
+from math import isfinite
 from pathlib import Path
 
 import yaml
@@ -58,6 +59,18 @@ def validate_case(case: dict) -> None:
         _native.grid_size(case["P"], case["c"])
 
 
+def validate_cases(cases) -> None:
+    if not isinstance(cases, list) or not cases:
+        raise ValueError("cases must be a non-empty list")
+    seen = set()
+    for case in cases:
+        validate_case(case)
+        key = (case["layout"], case["P"], case["c"])
+        if key in seen:
+            raise ValueError("cases must be unique")
+        seen.add(key)
+
+
 @dataclass
 class DatasetConfig:
     """Specify reproducible matrix generation in a new directory."""
@@ -93,15 +106,7 @@ class BenchmarkConfig:
             raise ValueError("repeats must be a positive integer")
         if type(self.warmups) is not int or self.warmups < 0:
             raise ValueError("warmups must be a non-negative integer")
-        if not isinstance(self.cases, list) or not self.cases:
-            raise ValueError("cases must be a non-empty list")
-        seen = set()
-        for case in self.cases:
-            validate_case(case)
-            key = (case["layout"], case["P"], case["c"])
-            if key in seen:
-                raise ValueError("cases must be unique")
-            seen.add(key)
+        validate_cases(self.cases)
         _dimensions(self.groups, self.sizes)
         if any(left >= right for left, right in zip(self.sizes, self.sizes[1:])):
             raise ValueError("sizes must be in ascending order")
@@ -118,6 +123,35 @@ class BenchmarkConfig:
             if mode == "threaded":
                 limit = min(6, os.cpu_count() or 1)
                 _selection("threaded.workers", options["workers"], tuple(range(1, limit + 1)))
+
+
+@dataclass
+class ModelConfig:
+    """Execute each configuration once; sweep saved counts without rerunning matrices."""
+    data_dir: Path
+    output_dir: Path
+    cases: list[dict]
+    sizes: list[int]
+    group: int = 0
+    workers: int = 0
+    gammas: list[float] = field(default_factory=lambda: [1, 10, 100, 1000])
+    lambdas: list[float] = field(default_factory=lambda: [100, 10000])
+    budgets: list[float] = field(default_factory=lambda: [8, 32])
+
+    def validate(self) -> None:
+        validate_cases(self.cases)
+        _dimensions([self.group], self.sizes)
+        if self.sizes != sorted(self.sizes):
+            raise ValueError("sizes must be in ascending order")
+        if type(self.workers) is not int or not 0 <= self.workers <= (os.cpu_count() or 1):
+            raise ValueError("workers must be between zero and available logical CPU count")
+        for name, minimum in (("gammas", 0), ("lambdas", 0), ("budgets", 0)):
+            values = getattr(self, name)
+            if (not isinstance(values, list) or not values
+                    or any(type(v) not in (int, float) or not isfinite(v) or v < minimum
+                           or (name == "budgets" and v == 0) for v in values)
+                    or len(set(values)) != len(values)):
+                raise ValueError(f"{name} must contain unique finite non-negative values (budgets positive)")
 
 
 def _load_config(path, config_type, path_fields):
@@ -149,3 +183,8 @@ def load_benchmark_config(path: str | Path) -> BenchmarkConfig:
 def load_dataset_config(path: str | Path) -> DatasetConfig:
     """Load generation settings, resolving paths relative to the YAML file."""
     return _load_config(path, DatasetConfig, ("data_dir",))
+
+
+def load_model_config(path: str | Path) -> ModelConfig:
+    """Load a trace/model experiment with paths relative to its YAML file."""
+    return _load_config(path, ModelConfig, ("data_dir", "output_dir"))
