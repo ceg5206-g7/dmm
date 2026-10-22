@@ -154,6 +154,34 @@ class ModelConfig:
                 raise ValueError(f"{name} must contain unique finite non-negative values (budgets positive)")
 
 
+@dataclass
+class MeasurementConfig:
+    """Calibrate independently, then measure prepared cases against frozen parameters."""
+    data_dir: Path
+    output_dir: Path
+    cases: list[dict]
+    sizes: list[int]
+    group: int = 0
+    workers: int = 0
+    warmups: int = 5
+    repeats: int = 15
+
+    def validate(self) -> None:
+        validate_cases(self.cases)
+        _dimensions([self.group], self.sizes)
+        if self.sizes != sorted(self.sizes):
+            raise ValueError("sizes must be in ascending order")
+        if type(self.workers) is not int or not 0 <= self.workers <= (os.cpu_count() or 1):
+            raise ValueError("workers must be between zero and available logical CPU count")
+        if type(self.warmups) is not int or self.warmups < 0:
+            raise ValueError("warmups must be a non-negative integer")
+        if type(self.repeats) is not int or self.repeats < 1:
+            raise ValueError("repeats must be a positive integer")
+        # Micro GEMMs are deliberately disjoint from held-out full matrix sizes.
+        if set(self.sizes) & {32, 64, 96}:
+            raise ValueError("sizes must be held out from calibration sizes 32/64/96")
+
+
 def _load_config(path, config_type, path_fields):
     path = Path(path).resolve()
     try:
@@ -188,3 +216,8 @@ def load_dataset_config(path: str | Path) -> DatasetConfig:
 def load_model_config(path: str | Path) -> ModelConfig:
     """Load a trace/model experiment with paths relative to its YAML file."""
     return _load_config(path, ModelConfig, ("data_dir", "output_dir"))
+
+
+def load_measurement_config(path: str | Path) -> MeasurementConfig:
+    """Load a prepared measurement/independent calibration profile."""
+    return _load_config(path, MeasurementConfig, ("data_dir", "output_dir"))

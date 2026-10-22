@@ -82,11 +82,11 @@ def _quantile(samples, fraction: float) -> float:
     return values[lower] + (position - lower) * (values[upper] - values[lower])
 
 
-def timing_statistics(samples) -> tuple[float, float]:
-    """Return median and IQR using linearly interpolated sample quartiles."""
+def timing_statistics(samples, *, allow_zero=False) -> tuple[float, float]:
+    """Return median/IQR; allow zero for inactive timing components only."""
     values = list(samples)
-    if not values or any(not isfinite(value) or value <= 0 for value in values):
-        raise ValueError("timing samples must be positive and finite")
+    if not values or any(not isfinite(value) or value < 0 or (value == 0 and not allow_zero) for value in values):
+        raise ValueError("timing samples must be positive and finite (non-negative with allow_zero)")
     return _quantile(values, 0.5), _quantile(values, 0.75) - _quantile(values, 0.25)
 
 

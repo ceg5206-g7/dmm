@@ -224,6 +224,13 @@ def capture_traces(config: ModelConfig, directory: Path):
                 _write_json(path, saved)
                 files.append({"name": path.name, "sha256": sha256(path.read_bytes()).hexdigest()})
                 correctness.append(dict(n=n, **case, **errors))
+    save_trace_manifest(config, directory, files, correctness,
+                        "correctness/counting only; no statistical wall-clock measurements")
+    return directory
+
+
+def save_trace_manifest(config, directory, files, correctness, purpose):
+    """Finish a checksum-verified capture usable by the shared offline model pipeline."""
     _csv(directory / "correctness.csv", ("n", "layout", "P", "c", "max_abs_error", "frobenius_relative_error"), correctness)
     settings = asdict(config)
     settings["data_dir"], settings["output_dir"] = str(config.data_dir), str(config.output_dir)
@@ -232,8 +239,7 @@ def capture_traces(config: ModelConfig, directory: Path):
                 "correctness_sha256": sha256((directory / "correctness.csv").read_bytes()).hexdigest(),
                 "validation_rule": "abs(error) <= 1e-4 + 1e-3 * abs(FP64 reference)",
                 "input_manifest": json.loads((Path(config.data_dir) / "manifest.json").read_text()),
-                "purpose": "correctness/counting only; no statistical wall-clock measurements"})
-    return directory
+                "purpose": purpose})
 
 
 def load_traces(directory, config):

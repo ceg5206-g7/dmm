@@ -5,9 +5,10 @@ from pathlib import Path
 
 from dmm.analysis import analyze_results
 from dmm.benchmark import run_benchmark
-from dmm.config import load_benchmark_config, load_dataset_config, load_model_config
+from dmm.config import load_benchmark_config, load_dataset_config, load_model_config, load_measurement_config
 from dmm.datasets import generate_dataset
 from dmm.model import run_model
+from dmm.measurement import run_measurement
 
 
 def main() -> None:
@@ -23,6 +24,8 @@ def main() -> None:
     model = commands.add_parser("model", help="Capture real traces and sweep model costs and budgets")
     model.add_argument("--config", type=Path, default=Path("configs/model.yaml"))
     model.add_argument("--traces", type=Path, help="Reuse a complete trace directory without rerunning algorithms")
+    measure = commands.add_parser("measure", help="Calibrate independent microkernels and measure prepared cases")
+    measure.add_argument("--config", type=Path, default=Path("configs/measure_serial.yaml"))
     args = parser.parse_args()
 
     try:
@@ -34,6 +37,9 @@ def main() -> None:
             config = load_benchmark_config(args.config)
             completed = run_benchmark(config)
             print(f"Saved {completed} benchmark result(s) to {config.output}")
+        elif args.command == "measure":
+            output_dir = run_measurement(load_measurement_config(args.config))
+            print(f"Saved calibrated measurements to {output_dir}")
         elif args.command == "model":
             config = load_model_config(args.config)
             output_dir = run_model(config, args.traces)

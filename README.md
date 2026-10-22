@@ -446,3 +446,16 @@ See [model commands and limits](doc/docs/model.md). The full proposal profile
 is 24 executions/192 scenarios/144 selection cells, and still requires the
 unimplemented ring/2.5D algorithms; its preflight refuses to fabricate results.
 Preallocated measurement, calibration and held-out residual checks remain work.
+
+
+Prepared measurements and independent local calibration:
+
+```sh
+uv run dmm measure --config configs/measure_serial.yaml
+uv run dmm measure --config configs/measure_threaded.yaml
+```
+
+These measure common rows to rows after preallocation, with 5 warmups/15 repeats,
+frozen microkernel w/g/l and held-out residuals. The four-worker profile requires
+four physical cores. See [the measurement protocol](doc/docs/measurement.md).
+Ring and 2.5D still belong to teammates; the full 24-run comparison awaits them.
