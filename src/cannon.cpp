@@ -14,14 +14,14 @@ enum Tag : std::size_t { A_BLOCK, B_BLOCK };
 
 // Node-private blocks; node code reads and writes only its own entry.
 struct Local {
-    std::vector<float> a, b, c;
+    Buffer a, b, c;
 };
 
 std::size_t node_at(std::size_t row, std::size_t col, std::size_t grid) { return row % grid * grid + col % grid; }
 
-std::vector<float> load_block(const Matrix<float>& matrix, std::size_t row, std::size_t col, std::size_t block) {
+Buffer load_block(Node& node, const Matrix<float>& matrix, std::size_t row, std::size_t col, std::size_t block) {
     const auto view = matrix.block(row * block, col * block, block);
-    std::vector<float> values(block * block);
+    auto values = node.buffer(block * block);
     for (std::size_t i = 0; i < block; ++i) std::copy_n(&view(i, 0), block, values.data() + i * block);
     return values;
 }
@@ -44,9 +44,9 @@ Traced Cannon::run(const Matrix<float>& a, const Matrix<float>& b, Executor& exe
     machine.superstep("skew", executor, [&](Node& node) {
         const auto i = node.id() / grid, j = node.id() % grid;
         auto& local = locals[node.id()];
-        local.a = load_block(a, i, j, block);
-        local.b = load_block(b, i, j, block);
-        local.c.assign(words, 0.0f);
+        local.a = load_block(node, a, i, j, block);
+        local.b = load_block(node, b, i, j, block);
+        local.c = node.buffer(words);
         if (i != 0) node.send(node_at(i, j + grid - i, grid), A_BLOCK, local.a);
         if (j != 0) node.send(node_at(i + grid - j, j, grid), B_BLOCK, local.b);
     });

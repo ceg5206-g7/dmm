@@ -12,7 +12,7 @@ struct TreeNode {
 };
 
 std::vector<TreeNode> plan(const Bsp& machine, std::span<const TreeGroup> groups,
-                           const std::vector<std::vector<float>>& values, bool reduce) {
+                           const NodeBuffers& values, bool reduce) {
     if (groups.empty() || values.size() != machine.nodes())
         throw std::invalid_argument("tree groups must be non-empty and values must cover all nodes");
     std::vector<TreeNode> nodes(machine.nodes());
@@ -38,7 +38,7 @@ std::vector<TreeNode> plan(const Bsp& machine, std::span<const TreeGroup> groups
 } // namespace
 
 void tree_broadcast(Bsp& machine, Executor& executor, std::span<const TreeGroup> groups,
-                    std::vector<std::vector<float>>& values, std::size_t tag) {
+                    NodeBuffers& values, std::size_t tag) {
     const auto nodes = plan(machine, groups, values, false);
     const auto depth = std::max_element(nodes.begin(), nodes.end(), [](const auto& a, const auto& b) {
         return a.depth < b.depth;
@@ -55,7 +55,7 @@ void tree_broadcast(Bsp& machine, Executor& executor, std::span<const TreeGroup>
 }
 
 void tree_reduce_sum(Bsp& machine, Executor& executor, std::span<const TreeGroup> groups,
-                     std::vector<std::vector<float>>& values, std::size_t tag) {
+                     NodeBuffers& values, std::size_t tag) {
     const auto nodes = plan(machine, groups, values, true);
     const auto depth = std::max_element(nodes.begin(), nodes.end(), [](const auto& a, const auto& b) {
         return a.depth < b.depth;

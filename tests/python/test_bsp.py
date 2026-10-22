@@ -81,3 +81,17 @@ def test_shared_grid_validation_accepts_proposal_replication_grids():
     from dmm import _native
     assert _native.grid_size(64, 4) == 4
     assert _native.grid_size(256, 4) == 8
+
+
+@pytest.mark.parametrize("workers", [0, 2])
+def test_trace_exposes_per_node_payload_peaks_and_count_takes_maximum(workers):
+    A = np.ones((8, 8), dtype=np.float32)
+    executor = ThreadExecutor(workers) if workers else SerialExecutor()
+    with executor:
+        _, trace = cannon.matmul_traced(A, A, executor)
+    assert len(trace.peak_words) == 16
+    assert all(len(step.peak_words) == 16 for step in trace.supersteps)
+    # Three local tiles plus at most two incoming and two outgoing tile copies.
+    assert max(trace.peak_words) == 7 * 2**2
+    assert count(trace).peak_words == max(trace.peak_words)
+    assert max(count(step).peak_words for step in trace.supersteps) == count(trace).peak_words

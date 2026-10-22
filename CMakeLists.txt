@@ -39,6 +39,7 @@ if(BUILD_TESTING)
 
   add_executable(dmm_tests
     tests/cpp/test_collectives.cpp
+    tests/cpp/test_memory.cpp
     tests/cpp/test_gemm.cpp
     tests/cpp/test_matrix.cpp
     tests/cpp/test_matrix_block_view.cpp

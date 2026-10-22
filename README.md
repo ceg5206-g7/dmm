@@ -10,7 +10,8 @@ BSP runtime: each node owns its A/B/C blocks, and the initial skew and the
 round shifts are real copied messages. Communication is counted per superstep,
 not delayed; BSP costs are computed from those counts afterwards (see
 [Communication model](#communication-model)). Common row-slice input/output
-conversion, per-node peak memory, 1D ring and 2.5D are future work. Wall-clock
+conversion, 1D ring and 2.5D remain future work. Per-node payload memory
+peaks are tracked for local tiles and messages. Wall-clock
 timings describe the single-machine implementation, including message copies.
 
 ## Install and quick start
@@ -397,3 +398,11 @@ accumulates into C, supports tile tails, and performs no allocation.
 reduction over disjoint ordered node groups. All groups share supersteps;
 messages and reduction FLOPs are recorded by BSP, including the final receive
 step. For each group, rank r has parent (r-1)/2. Singleton groups are no-ops.
+
+Node payload ownership uses move-only `Buffer` from `include/dmm/memory.hpp`.
+Allocate through `Bsp::buffer`, `Bsp::buffers` or `Node::buffer` so local tiles,
+packing buffers, replicas and messages share one per-node memory ledger.
+`Trace.peak_words` and each superstep contain per-node peaks; `Counts.peak_words`
+is their maximum, and count aggregation takes max rather than sum for memory.
+Host Matrix/oracle storage is excluded from logical-node payload; whole-process
+memory requires a separate measurement.

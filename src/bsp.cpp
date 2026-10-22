@@ -12,6 +12,7 @@ Counts& Counts::operator+=(const Counts& other) noexcept {
     total_words += other.total_words;
     critical_words += other.critical_words;
     messages += other.messages;
+    peak_words = std::max(peak_words, other.peak_words);
     return *this;
 }
 
@@ -19,6 +20,7 @@ Counts count(const SuperstepRecord& superstep) {
     const auto nodes = superstep.flops.size();
     std::vector<std::size_t> sent(nodes), received(nodes);
     Counts counts;
+    for (auto words : superstep.peak_words) counts.peak_words = std::max(counts.peak_words, words);
     counts.supersteps = 1;
     counts.messages = superstep.messages.size();
     for (const auto& message : superstep.messages) {
@@ -37,6 +39,7 @@ Counts count(const SuperstepRecord& superstep) {
 Counts count(const Trace& trace) {
     Counts counts;
     for (const auto& superstep : trace.supersteps) counts += count(superstep);
+    for (auto words : trace.peak_words) counts.peak_words = std::max(counts.peak_words, words);
     return counts;
 }
 
@@ -55,10 +58,10 @@ void Node::send(std::size_t destination, std::size_t tag, std::span<const float>
     for (const auto& message : state_.outbox)
         if (message.destination == destination && message.tag == tag)
             throw std::logic_error("duplicate message destination and tag in one superstep");
-    state_.outbox.push_back({destination, tag, {payload.begin(), payload.end()}});
+    state_.outbox.push_back({destination, tag, Buffer(state_.memory, {payload.begin(), payload.end()})});
 }
 
-std::vector<float> Node::receive(std::size_t source, std::size_t tag, std::size_t words) {
+Buffer Node::receive(std::size_t source, std::size_t tag, std::size_t words) {
     if (source >= nodes_) throw std::out_of_range("message source is not a logical node");
     const auto message = state_.inbox.find({source, tag});
     if (message == state_.inbox.end())
@@ -70,12 +73,26 @@ std::vector<float> Node::receive(std::size_t source, std::size_t tag, std::size_
     return payload;
 }
 
-Bsp::Bsp(std::size_t nodes) : states_(nodes), trace_{nodes, {}} {
+Bsp::Bsp(std::size_t nodes) : states_(nodes), trace_{nodes, {}, {}} {
     if (nodes == 0) throw std::invalid_argument("BSP machine requires at least one logical node");
 }
 
+Buffer Bsp::buffer(std::size_t node, std::size_t words) const {
+    return Buffer(states_.at(node).memory, std::vector<float>(words));
+}
+
+NodeBuffers Bsp::buffers(std::size_t words) const {
+    NodeBuffers result;
+    result.reserve(nodes());
+    for (std::size_t id = 0; id < nodes(); ++id) result.push_back(buffer(id, words));
+    return result;
+}
+
+std::size_t Bsp::live_words(std::size_t node) const { return states_.at(node).memory->live; }
+
 void Bsp::superstep(std::string label, Executor& executor, const std::function<void(Node&)>& body) {
     const auto nodes = states_.size();
+    for (const auto& state : states_) state.memory->step_peak = state.memory->live;
     executor.for_each(nodes, [&](std::size_t id) {
         Node node(id, nodes, states_[id]);
         body(node);
@@ -83,16 +100,18 @@ void Bsp::superstep(std::string label, Executor& executor, const std::function<v
     for (const auto& state : states_)
         if (!state.inbox.empty())
             throw std::logic_error("superstep " + label + " left a delivered message unreceived");
-    SuperstepRecord record{std::move(label), std::vector<std::size_t>(nodes), {}};
+    SuperstepRecord record{std::move(label), std::vector<std::size_t>(nodes), {}, {}};
     for (std::size_t source = 0; source < nodes; ++source) {
         auto& state = states_[source];
         record.flops[source] = std::exchange(state.flops, 0);
         for (auto& message : state.outbox) {
             record.messages.push_back({source, message.destination, message.tag, message.payload.size()});
+            message.payload.rebind(states_[message.destination].memory);
             states_[message.destination].inbox.emplace(std::pair{source, message.tag}, std::move(message.payload));
         }
         state.outbox.clear();
     }
+    for (const auto& state : states_) record.peak_words.push_back(state.memory->step_peak);
     trace_.supersteps.push_back(std::move(record));
 }
 
@@ -100,7 +119,12 @@ Trace Bsp::finish() {
     for (const auto& state : states_)
         if (!state.inbox.empty())
             throw std::logic_error("the final superstep left a delivered message unreceived");
-    return std::exchange(trace_, Trace{states_.size(), {}});
+    trace_.peak_words.clear();
+    for (const auto& state : states_) {
+        trace_.peak_words.push_back(state.memory->peak);
+        state.memory->peak = state.memory->live;
+    }
+    return std::exchange(trace_, Trace{states_.size(), {}, {}});
 }
 
 } // namespace dmm

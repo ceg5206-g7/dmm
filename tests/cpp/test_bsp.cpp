@@ -1,5 +1,6 @@
 #include "dmm/bsp.hpp"
 #include <gtest/gtest.h>
+#include "test_counts.hpp"
 #include <cstddef>
 #include <limits>
 #include <stdexcept>
@@ -22,7 +23,8 @@ TEST_P(BspTest, DeliversCopiedPayloadsInTheNextSuperstepAndRecordsThem) {
     });
     machine.superstep("drain", *executor, [&](dmm::Node& node) {
         const auto source = (node.id() + 2) % 3;
-        received[node.id()] = node.receive(source, 7, source + 1);
+        const auto incoming = node.receive(source, 7, source + 1);
+        received[node.id()].assign(incoming.begin(), incoming.end());
     });
     EXPECT_EQ(received, (std::vector<std::vector<float>>{{4, 5, 6}, {1}, {2, 3}}));
     const auto trace = machine.finish();
@@ -40,9 +42,9 @@ TEST_P(BspTest, DeliversCopiedPayloadsInTheNextSuperstepAndRecordsThem) {
     }
     EXPECT_TRUE(trace.supersteps[1].messages.empty());
     // h = max(sent, received): node 0 sends 1 and receives 3 words.
-    EXPECT_EQ(dmm::count(trace), (dmm::Counts{2, 3, 2, 6, 3, 3}));
-    EXPECT_EQ(dmm::count(trace.supersteps[0]), (dmm::Counts{1, 3, 2, 6, 3, 3}));
-    EXPECT_EQ(dmm::count(trace.supersteps[1]), (dmm::Counts{1, 0, 0, 0, 0, 0}));
+    expect_work_and_communication(dmm::count(trace), (dmm::Counts{2, 3, 2, 6, 3, 3}));
+    expect_work_and_communication(dmm::count(trace.supersteps[0]), (dmm::Counts{1, 3, 2, 6, 3, 3}));
+    expect_work_and_communication(dmm::count(trace.supersteps[1]), (dmm::Counts{1, 0, 0, 0, 0, 0}));
     EXPECT_TRUE(machine.finish().supersteps.empty());
 }
 
@@ -57,7 +59,7 @@ TEST_P(BspTest, CountsManyToOneTrafficAtTheReceiver) {
         if (node.id() == 0)
             for (std::size_t source = 1; source < 4; ++source) node.receive(source, 0, payload.size());
     });
-    EXPECT_EQ(dmm::count(machine.finish()), (dmm::Counts{2, 0, 0, 15, 15, 3}));
+    expect_work_and_communication(dmm::count(machine.finish()), (dmm::Counts{2, 0, 0, 15, 15, 3}));
 }
 
 INSTANTIATE_TEST_SUITE_P(Workers, BspTest, ::testing::Values(0, 1, 2, 5),

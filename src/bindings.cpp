@@ -113,17 +113,20 @@ PYBIND11_MODULE(_native, module) {
     py::class_<dmm::SuperstepRecord>(module, "SuperstepRecord")
         .def_readonly("label", &dmm::SuperstepRecord::label)
         .def_readonly("flops", &dmm::SuperstepRecord::flops)
-        .def_readonly("messages", &dmm::SuperstepRecord::messages);
+        .def_readonly("messages", &dmm::SuperstepRecord::messages)
+        .def_readonly("peak_words", &dmm::SuperstepRecord::peak_words);
     py::class_<dmm::Trace>(module, "Trace")
         .def_readonly("nodes", &dmm::Trace::nodes)
-        .def_readonly("supersteps", &dmm::Trace::supersteps);
+        .def_readonly("supersteps", &dmm::Trace::supersteps)
+        .def_readonly("peak_words", &dmm::Trace::peak_words);
     py::class_<dmm::Counts>(module, "Counts")
         .def_readonly("supersteps", &dmm::Counts::supersteps)
         .def_readonly("total_flops", &dmm::Counts::total_flops)
         .def_readonly("critical_flops", &dmm::Counts::critical_flops)
         .def_readonly("total_words", &dmm::Counts::total_words)
         .def_readonly("critical_words", &dmm::Counts::critical_words)
-        .def_readonly("messages", &dmm::Counts::messages);
+        .def_readonly("messages", &dmm::Counts::messages)
+        .def_readonly("peak_words", &dmm::Counts::peak_words);
     module.def("count", py::overload_cast<const dmm::Trace&>(&dmm::count), py::arg("trace"));
     module.def("count", py::overload_cast<const dmm::SuperstepRecord&>(&dmm::count), py::arg("superstep"));
     module.def("bsp_cost", [](const dmm::Counts& counts, double w, double g, double l) {

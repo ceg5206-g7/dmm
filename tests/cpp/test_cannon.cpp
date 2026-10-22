@@ -1,5 +1,6 @@
 #include "dmm/cannon.hpp"
 #include <gtest/gtest.h>
+#include "test_counts.hpp"
 #include <algorithm>
 #include <cstddef>
 #include <functional>
@@ -181,13 +182,12 @@ TEST_P(CannonTraceTest, MatchesHandComputedCommunication) {
         const auto block = n / 4, words = block * block, flops = 2 * words * block;
         ASSERT_EQ(trace.nodes, 16u);
         ASSERT_EQ(trace.supersteps.size(), 5u);
-        EXPECT_EQ(dmm::count(trace), (dmm::Counts{5, 16 * 4 * flops, 4 * flops,
+        expect_work_and_communication(dmm::count(trace), (dmm::Counts{5, 16 * 4 * flops, 4 * flops,
                                                   120 * words, 8 * words, 120}));
-        EXPECT_EQ(dmm::count(trace.supersteps[0]), (dmm::Counts{1, 0, 0, 24 * words, 2 * words, 24}));
+        expect_work_and_communication(dmm::count(trace.supersteps[0]), (dmm::Counts{1, 0, 0, 24 * words, 2 * words, 24}));
         for (std::size_t s = 1; s < 4; ++s)
-            EXPECT_EQ(dmm::count(trace.supersteps[s]),
-                      (dmm::Counts{1, 16 * flops, flops, 32 * words, 2 * words, 32}));
-        EXPECT_EQ(dmm::count(trace.supersteps[4]), (dmm::Counts{1, 16 * flops, flops, 0, 0, 0}));
+            expect_work_and_communication(dmm::count(trace.supersteps[s]), (dmm::Counts{1, 16 * flops, flops, 32 * words, 2 * words, 32}));
+        expect_work_and_communication(dmm::count(trace.supersteps[4]), (dmm::Counts{1, 16 * flops, flops, 0, 0, 0}));
         EXPECT_EQ(trace.supersteps[0].label, "skew");
         for (std::size_t s = 1; s < 5; ++s) EXPECT_EQ(trace.supersteps[s].label, "multiply");
     }
