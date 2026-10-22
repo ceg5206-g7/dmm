@@ -17,7 +17,7 @@ import pytest
 
 def make_config(data_dir, output, **options):
     values = dict(data_dir=data_dir, output=output, cases=[{"layout": "cannon", "P": 16, "c": 1}],
-                  modes={"sequential": {}}, groups=[0], sizes=[16], warmups=0)
+                  modes={"sequential": {}}, groups=[0], sizes=[16], warmups=0, repeats=1)
     values.update(options)
     return BenchmarkConfig(**values)
 
@@ -427,6 +427,8 @@ def test_metadata_captures_configuration_manifest_and_environment(data_dir, tmp_
         "modes": {"sequential": {}, "threaded": {"workers": [1, 2]}},
         "groups": [1, 0], "sizes": [16, 32], "repeats": 3, "warmups": 0,
     }
+    assert metadata["native"]["statistics"]["center"] == "median of group medians"
+    assert "linearly interpolated" in metadata["native"]["statistics"]["spread"]
     assert metadata["dataset"] == json.loads((data_dir / "manifest.json").read_text())
     assert metadata["environment"] == {
         "python_version": "3.12.test", "numpy_version": np.__version__, "platform": "test-platform",

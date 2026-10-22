@@ -30,7 +30,7 @@ def rows():
     return results
 
 
-def test_summary_averages_groups_and_uses_each_algorithm_and_size_baseline(tmp_path, rows):
+def test_summary_aggregates_group_medians_and_uses_matching_baseline(tmp_path, rows):
     path = write_results(tmp_path / "run.csv", reversed(rows))
     summary = analysis.summarize_results(str(path))
     expected = []
@@ -40,7 +40,7 @@ def test_summary_averages_groups_and_uses_each_algorithm_and_size_baseline(tmp_p
                                                  ("threaded", 2, 2, 2)):
             for size, size_factor in ((16, 1), (32, 3)):
                 expected.append(dict(layout=algorithm, P=16, c=1, mode=mode, workers=workers,
-                                     size=size, group_count=2, repeats=1, mean_time_s=average * factor * size_factor,
+                                     size=size, group_count=2, repeats=1, median_time_s=average * factor * size_factor, iqr_time_s=0,
                                      speedup=speedup))
     assert summary == expected
 
@@ -135,14 +135,14 @@ def test_unrepresentable_speedup_is_rejected(tmp_path):
         analysis.summarize_results(write_results(tmp_path / "run.csv", [serial, parallel]))
 
 
-def test_repeated_measurements_are_averaged_within_each_group(tmp_path, rows):
+def test_repeated_measurements_use_group_median_and_iqr(tmp_path, rows):
     repeated = [dict(row, repeat=repeat, time_s=row["time_s"] * factor)
                 for row in rows for repeat, factor in enumerate((0.5, 1, 1.5))]
     summary = analysis.summarize_results(write_results(tmp_path / "run.csv", reversed(repeated)))
     assert len(summary) == 12
     assert all(row["group_count"] == 2 and row["repeats"] == 3 for row in summary)
     selected = [row for row in summary if row["layout"] == "cannon" and row["size"] == 16]
-    assert [row["mean_time_s"] for row in selected] == [4, 6, 2]
+    assert [row["median_time_s"] for row in selected] == [4, 6, 2]
     assert [row["speedup"] for row in selected] == pytest.approx([1, 2 / 3, 2])
 
 
@@ -267,3 +267,27 @@ def test_old_csv_without_grid_columns_preserves_unknown_configuration(tmp_path):
     assert summary[0]["P"] is None and summary[0]["c"] is None
     assert summary[0]["layout"] == "cannon"
     assert summary[0]["speedup"] == 1
+
+
+def test_fifteen_repetitions_report_median_and_iqr_not_outlier_mean(tmp_path):
+    samples = [1.0] * 7 + [2.0] + [3.0] * 6 + [1000.0]
+    assert analysis.timing_statistics(samples) == (2, 2)
+    rows = [dict(layout="cannon", P=16, c=1, mode="sequential", workers=None,
+                 group=0, pair=0, size=16, repeat=i, time_s=t,
+                 max_abs_error=0, frobenius_relative_error=0) for i, t in enumerate(samples)]
+    summary, = analysis.summarize_results(write_results(tmp_path / "fifteen.csv", rows))
+    assert summary["median_time_s"] == 2
+    assert summary["iqr_time_s"] == 2
+    assert summary["repeats"] == 15 and summary["speedup"] == 1
+
+
+@pytest.mark.parametrize("samples", [[], [0], [-1], [float("inf")], [float("nan")]])
+def test_invalid_timing_samples_are_rejected(samples):
+    with pytest.raises(ValueError, match="positive and finite"):
+        analysis.timing_statistics(samples)
+
+
+def test_quartile_convention_and_large_finite_times():
+    assert analysis.timing_statistics([1, 2, 3, 4]) == (2.5, 1.5)
+    assert analysis.timing_statistics([4]) == (4, 0)
+    assert analysis.timing_statistics([1e308, 1e308]) == (1e308, 0)

@@ -75,6 +75,8 @@ def save_run_metadata(config: BenchmarkConfig) -> Path:
             "input_dtype": "float32", "reference_dtype": "float64",
             "timer": {"name": "time.perf_counter", **vars(get_clock_info("perf_counter"))},
             "timing": "algorithm call including input/output copies; excludes worker startup and validation",
+            "statistics": {"center": "median of group medians",
+                           "spread": "median of group IQRs; linearly interpolated quartiles"},
         },
     }
     contents = json.dumps(metadata, indent=2) + "\n"

@@ -85,7 +85,7 @@ class BenchmarkConfig:
     modes: dict[str, dict]
     groups: list[int]
     sizes: list[int]
-    repeats: int = 1
+    repeats: int = 15
     warmups: int = 5
 
     def validate(self) -> None:

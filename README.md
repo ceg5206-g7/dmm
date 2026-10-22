@@ -45,8 +45,8 @@ uv run dmm analyze --input results/benchmark_lite.csv
 The dataset contains sizes 16 through 2048. Lite measures sizes through 256,
 three groups, sequential and one/two-worker execution, with two warmups and
 one measurement per case: 45 samples, matching `matmul` lite. The full
-configuration uses all sizes, five warmups and three measurements per case:
-216 samples, matching `matmul` full. Increase `repeats` in YAML for more samples.
+configuration uses all sizes, five warmups and fifteen measurements per case:
+1080 samples. Increase `repeats` in YAML for more samples.
 
 Reuse a complete dataset instead of regenerating it. YAML paths are relative
 to the configuration file. Inputs and result files are never overwritten;
@@ -169,7 +169,7 @@ modes:
     workers: [2]
 groups: [0]
 sizes: [16, 32]
-repeats: 3
+repeats: 15
 warmups: 5
 ```
 
@@ -269,7 +269,7 @@ GoogleTest and pytest check these hand counts and individual message routes.
 
 YAML `warmups` is the number of discarded calls before each case's measured
 calls; `repeats` is the number of independent measured calls. Defaults are
-five warmups and one measurement; the example configs set both explicitly.
+five warmups and fifteen measurements; the example configs set both explicitly.
 Each case is one algorithm/mode/workers/group/size setting. There is no automatic iteration calibration.
 
 Python surrounds `matmul(A, B, executor)` with `time.perf_counter()`, matching
@@ -304,8 +304,10 @@ Each run writes:
   type, FP types, timing boundary and timer details. Settings include warmups. A dirty flag does not preserve local changes.
 - `benchmark_lite_analysis/`: `summary.csv`, `time.png` and `speedup.png`.
 
-Analysis averages repetitions within each group, then averages group means.
-Speedup is the matching sequential mean divided by the threaded mean, using
+Analysis reports median and IQR (Q75−Q25, linear interpolation) within each
+input group, then takes the median of group medians and the median of group IQRs.
+The IQR is repeat variability, not variability between input groups.
+Speedup is the matching sequential median divided by the threaded median, using
 the same layout, P, c, size and groups. CSV files without `repeat` are treated as one measurement. Historical CSV files
 with an `algorithm` column are still readable; their unknown P/c are left blank
 in summaries rather than inferred. Duplicate samples, incomplete repeats, missing baselines,

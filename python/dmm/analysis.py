@@ -3,12 +3,11 @@
 import csv
 from math import isfinite
 from pathlib import Path
-from statistics import mean
 
 from dmm.benchmark import CSV_FIELDS
 from dmm.config import MODES, validate_case
 
-SUMMARY_FIELDS = ("layout", "P", "c", "mode", "workers", "size", "group_count", "repeats", "mean_time_s", "speedup")
+SUMMARY_FIELDS = ("layout", "P", "c", "mode", "workers", "size", "group_count", "repeats", "median_time_s", "iqr_time_s", "speedup")
 
 
 def _load_timings(input_path: str | Path) -> dict:
@@ -75,13 +74,30 @@ def _load_timings(input_path: str | Path) -> dict:
     return timings
 
 
+def _quantile(samples, fraction: float) -> float:
+    values = sorted(samples)
+    position = (len(values) - 1) * fraction
+    lower = int(position)
+    upper = min(lower + 1, len(values) - 1)
+    return values[lower] + (position - lower) * (values[upper] - values[lower])
+
+
+def timing_statistics(samples) -> tuple[float, float]:
+    """Return median and IQR using linearly interpolated sample quartiles."""
+    values = list(samples)
+    if not values or any(not isfinite(value) or value <= 0 for value in values):
+        raise ValueError("timing samples must be positive and finite")
+    return _quantile(values, 0.5), _quantile(values, 0.75) - _quantile(values, 0.25)
+
+
 def summarize_results(input_path: str | Path) -> list[dict]:
-    """Average groups and compare each setting with its matching serial baseline."""
+    """Take group medians/IQRs, aggregate each by median, and use matching baselines."""
     timings = _load_timings(input_path)
-    averages = {
-        key: mean(mean(samples.values()) for samples in groups.values())
-        for key, groups in timings.items()
-    }
+    statistics = {}
+    for key, groups in timings.items():
+        per_group = [timing_statistics(samples.values()) for samples in groups.values()]
+        statistics[key] = (_quantile([s[0] for s in per_group], 0.5),
+                           _quantile([s[1] for s in per_group], 0.5))
     summary = []
     for key in sorted(timings, key=lambda key: (key[0], key[1] or 0, key[2] or 0, key[3] != "sequential", key[4] or 0, key[5])):
         layout, P, c, mode, workers, size = key
@@ -90,17 +106,17 @@ def summarize_results(input_path: str | Path) -> list[dict]:
             raise ValueError(f"Missing sequential baseline for layout {layout!r}, P={P}, c={c}, size {size}")
         if timings[key].keys() != timings[baseline].keys():
             raise ValueError(f"Group mismatch for layout {layout!r}, P={P}, c={c}, size {size}, workers {workers}")
-        speedup = averages[baseline] / averages[key]
+        speedup = statistics[baseline][0] / statistics[key][0]
         if not isfinite(speedup) or speedup <= 0:
             raise ValueError(f"Speedup must be positive and finite for layout {layout!r}, P={P}, c={c}, size {size}")
         summary.append(dict(layout=layout, P=P, c=c, mode=mode, workers=workers, size=size,
                             group_count=len(timings[key]), repeats=len(next(iter(timings[key].values()))),
-                            mean_time_s=averages[key], speedup=speedup))
+                            median_time_s=statistics[key][0], iqr_time_s=statistics[key][1], speedup=speedup))
     return summary
 
 
 def _plot_runtime(summary: list[dict], output_path: Path) -> None:
-    """Plot mean runtime against matrix size for each execution setting."""
+    """Plot median runtime against matrix size for each execution setting."""
     # Use Agg directly so analysis also works on machines without a GUI.
     from matplotlib.backends.backend_agg import FigureCanvasAgg
     from matplotlib.figure import Figure
@@ -115,13 +131,13 @@ def _plot_runtime(summary: list[dict], output_path: Path) -> None:
     for (layout, P, c, mode, workers), rows in runtime_series.items():
         rows = sorted(rows, key=lambda row: row["size"])
         setting = "sequential" if mode == "sequential" else f"{workers} thread(s)"
-        axis.plot([row["size"] for row in rows], [row["mean_time_s"] for row in rows],
+        axis.plot([row["size"] for row in rows], [row["median_time_s"] for row in rows],
                   marker="o", label=f"{layout}: P={P}, c={c}, {setting}")
     sizes = sorted({row["size"] for row in summary})
     axis.set_xscale("log", base=2)
     axis.set_xticks(sizes, labels=[str(size) for size in sizes])
     axis.set_yscale("log")
-    axis.set(xlabel="Matrix size (N)", ylabel="Mean time (s)", title="Matrix multiplication runtime")
+    axis.set(xlabel="Matrix size (N)", ylabel="Median time (s)", title="Matrix multiplication runtime")
     axis.grid(True, alpha=0.3)
     axis.legend(fontsize="small")
     figure.savefig(output_path, dpi=150)

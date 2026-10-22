@@ -79,17 +79,17 @@ def test_repository_example_loads():
     assert config.cases == [{"layout": "cannon", "P": 16, "c": 1}]
     assert config.data_dir.resolve() == Path(__file__).parents[2] / "data"
     assert config.output.resolve() == Path(__file__).parents[2] / "results" / "benchmark.csv"
-    assert config.repeats == 3
+    assert config.repeats == 15
     assert config.sizes == [16, 32, 64, 128, 256, 512, 1024, 2048]
 
 
 @pytest.mark.parametrize("repeats", [None, 1, 3])
-def test_benchmark_repeats_defaults_to_one_and_accepts_positive_integers(tmp_path, values, repeats):
+def test_benchmark_repeats_defaults_to_fifteen_and_accepts_positive_integers(tmp_path, values, repeats):
     if repeats is not None:
         values["repeats"] = repeats
     path = tmp_path / "run.yaml"
     path.write_text(yaml.safe_dump(values))
-    assert load_benchmark_config(path).repeats == (repeats or 1)
+    assert load_benchmark_config(path).repeats == (repeats or 15)
 
 
 @pytest.mark.parametrize("repeats", [0, -1, True, 1.5, "3", None])

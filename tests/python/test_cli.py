@@ -2,7 +2,7 @@ import csv
 import json
 from pathlib import Path
 import shutil
-from statistics import fmean
+from statistics import median
 import subprocess
 import sys
 
@@ -92,7 +92,7 @@ def test_installed_command_generates_dataset_outside_project(tmp_path):
     bench_path = directory / "benchmark.yaml"
     bench_path.write_text(yaml.safe_dump({
         "data_dir": "custom", "output": "results.csv", "cases": [{"layout": "cannon", "P": 16, "c": 1}],
-        "modes": {"sequential": {}}, "groups": [5, 2], "sizes": [12, 16],
+        "modes": {"sequential": {}}, "groups": [5, 2], "sizes": [12, 16], "repeats": 1,
     }))
     result = subprocess.run(
         [executable, "bench", "--config", str(bench_path)],
@@ -165,7 +165,7 @@ def test_installed_bench_command_outside_project(tmp_path, repeats, node_counts)
     if repeats is not None:
         settings["repeats"] = repeats
     config_path.write_text(yaml.safe_dump(settings, sort_keys=False))
-    repeat_count = repeats or 1
+    repeat_count = repeats or 15
     executable = shutil.which("dmm", path=str(Path(sys.executable).parent))
     assert executable is not None
     result = subprocess.run([executable, "bench", "--config", str(config_path)],
@@ -194,15 +194,15 @@ def test_installed_bench_command_outside_project(tmp_path, repeats, node_counts)
         summary = list(csv.DictReader(handle))
     assert len(summary) == 3 * len(node_counts)
     for aggregated in summary:
-        baseline = fmean(float(row["time_s"]) for row in rows
+        baseline = median(float(row["time_s"]) for row in rows
                          if row["mode"] == "sequential" and row["P"] == aggregated["P"])
         selected = [float(row["time_s"]) for row in rows
                     if row["mode"] == aggregated["mode"] and row["workers"] == aggregated["workers"]
                     and row["P"] == aggregated["P"] and row["c"] == aggregated["c"]]
         assert aggregated["group_count"] == "1"
         assert aggregated["repeats"] == str(repeat_count)
-        assert float(aggregated["mean_time_s"]) == pytest.approx(fmean(selected))
-        assert float(aggregated["speedup"]) == pytest.approx(baseline / fmean(selected))
+        assert float(aggregated["median_time_s"]) == pytest.approx(median(selected))
+        assert float(aggregated["speedup"]) == pytest.approx(baseline / median(selected))
     for filename in ("time.png", "speedup.png"):
         assert (analysis_dir / filename).read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
 
