@@ -392,3 +392,8 @@ Only Cannon is currently implemented.
 The shared rectangular FP32 kernel is `include/dmm/gemm.hpp`; all layouts
 must use its fixed tile 32 and common compilation flags. It accepts row strides,
 accumulates into C, supports tile tails, and performs no allocation.
+
+`include/dmm/collectives.hpp` provides fixed binary-tree broadcast and sum
+reduction over disjoint ordered node groups. All groups share supersteps;
+messages and reduction FLOPs are recorded by BSP, including the final receive
+step. For each group, rank r has parent (r-1)/2. Singleton groups are no-ops.
