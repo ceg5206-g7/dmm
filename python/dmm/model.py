@@ -354,6 +354,7 @@ def run_model(config: ModelConfig, traces=None):
                 "formula": "W_crit + gamma*C_crit + lambda*S", "w_over_w0": 1,
                 "scenarios": len(rows), "selection_cells": len(choices), "executed_configurations": len(records),
                 "gammas": config.gammas, "lambdas": config.lambdas, "budgets": config.budgets,
+                "analysis_git": source_revision(),
                 "trace_directory": str(Path(traces).resolve()),
                 "trace_manifest_sha256": sha256((Path(traces) / "manifest.json").read_bytes()).hexdigest(),
                 "measurement": "t_measured intentionally blank; capture is not a timing experiment",

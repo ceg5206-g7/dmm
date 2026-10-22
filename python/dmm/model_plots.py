@@ -14,7 +14,8 @@ def plot_model(rows, phases, choices, config, output):
     columns = list(product(config.lambdas, config.budgets))
     figure = Figure(figsize=(4 * len(columns), 2.8 * len(config.sizes)), layout="constrained")
     FigureCanvasAgg(figure)
-    figure.suptitle("Predicted end-to-end layout under BSP assumptions")
+    available = {case["layout"] for case in config.cases}
+    figure.suptitle("Predicted end-to-end layout under BSP assumptions\nCandidates: " + ", ".join(sorted(available)))
     axes = figure.subplots(len(config.sizes), len(columns), squeeze=False)
     index = {(r["n"], r["P"], r["gamma"], r["lambda"], r["mu"]): r for r in choices}
     for row, n in enumerate(config.sizes):
@@ -37,7 +38,9 @@ def plot_model(rows, phases, choices, config, output):
             ax.set(xticks=range(len(gammas)), xticklabels=gammas, yticks=range(len(ps)), yticklabels=ps,
                    xlabel="gamma (FLOPs/word)", ylabel="logical P",
                    title=f"n={n}, lambda={latency}, mu={mu}")
-    figure.legend([Patch(color=c) for c in colors], labels, loc="outside lower center", ncols=5)
+    legend_indices = [i for i, name in enumerate(("ring", "cannon", "2.5d")) if name in available] + [3, 4]
+    figure.legend([Patch(color=colors[i]) for i in legend_indices], [labels[i] for i in legend_indices],
+                  loc="outside lower center", ncols=len(legend_indices))
     figure.savefig(output / "layout_selection.png", dpi=150)
 
     # One explicitly labelled representative slice; CSVs retain every scenario.
