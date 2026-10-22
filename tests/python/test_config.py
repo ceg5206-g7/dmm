@@ -138,3 +138,22 @@ def test_repository_dataset_example_loads():
     assert config.groups == [0, 1, 2]
     assert config.value_range == [0, 255]
     assert config.data_dir.resolve() == Path(__file__).parents[2] / "data"
+
+
+@pytest.mark.parametrize("P,c", [(16, 1), (64, 1), (256, 1), (64, 4), (256, 4)])
+def test_yaml_loads_logical_nodes_and_replication(tmp_path, values, P, c):
+    values.update(P=P, c=c)
+    path = tmp_path / "run.yaml"
+    path.write_text(yaml.safe_dump(values))
+    config = load_benchmark_config(path)
+    assert (config.P, config.c) == (P, c)
+
+
+@pytest.mark.parametrize("field,value", [("P", 0), ("P", -1), ("P", True), ("P", 16.0),
+                                         ("c", 0), ("c", -1), ("c", True), ("c", "4")])
+def test_yaml_rejects_invalid_logical_node_and_replication_types(tmp_path, values, field, value):
+    values[field] = value
+    path = tmp_path / "run.yaml"
+    path.write_text(yaml.safe_dump(values))
+    with pytest.raises(ValueError, match=field):
+        load_benchmark_config(path)

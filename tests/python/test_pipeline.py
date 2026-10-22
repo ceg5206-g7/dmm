@@ -133,7 +133,7 @@ def test_warmups_and_validation_are_outside_algorithm_call_timing(dataset, tmp_p
     multiply = cannon.matmul
     validate = benchmark._validate_product
 
-    def tracked(a, b, executor):
+    def tracked(a, b, executor, **options):
         events.append("multiply")
         return multiply(a, b, executor)
 

@@ -70,12 +70,17 @@ class BenchmarkConfig:
     sizes: list[int]
     repeats: int = 1
     warmups: int = 5
+    P: int = 16
+    c: int = 1
 
     def validate(self) -> None:
         if type(self.repeats) is not int or self.repeats < 1:
             raise ValueError("repeats must be a positive integer")
         if type(self.warmups) is not int or self.warmups < 0:
             raise ValueError("warmups must be a non-negative integer")
+        for name in ("P", "c"):
+            if type(getattr(self, name)) is not int or getattr(self, name) <= 0:
+                raise ValueError(f"{name} must be a positive integer")
         _selection("algorithms", self.algorithms, ALGORITHMS)
         _dimensions(self.groups, self.sizes)
         if any(left >= right for left, right in zip(self.sizes, self.sizes[1:])):

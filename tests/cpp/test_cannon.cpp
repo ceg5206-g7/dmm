@@ -237,3 +237,40 @@ TEST(CannonStateTest, ResultsAreIndependentAcrossCallsAndExecutors) {
     EXPECT_TRUE(executed);
 }
 } // namespace
+
+TEST(ConfigurableCannonTest, MatchesReferenceAndCountsAcrossGrids) {
+    dmm::ThreadExecutor executor(2);
+    dmm::Matrix<float> a(32), b(32);
+    std::mt19937 random(5206);
+    std::uniform_real_distribution<float> value(-1, 1);
+    for (auto& x : a.values) x = value(random);
+    for (auto& x : b.values) x = value(random);
+    const auto expected = reference(a, b);
+    for (std::size_t P : {1, 4, 16, 64, 256}) {
+        SCOPED_TRACE(P);
+        const auto q = dmm::grid_size(P), block = 32 / q, words = block * block;
+        const auto result = dmm::Cannon{P, 1}.run(a, b, executor);
+        EXPECT_NO_THROW(dmm::validate(result.product, expected));
+        EXPECT_EQ(result.trace.nodes, P);
+        const auto counts = dmm::count(result.trace);
+        EXPECT_EQ(counts.supersteps, q + 1);
+        EXPECT_EQ(counts.total_flops, 2u * 32 * 32 * 32);
+        EXPECT_EQ(counts.critical_flops, counts.total_flops / P);
+        EXPECT_EQ(counts.messages, 2 * (q - 1) * (q + P));
+        EXPECT_EQ(counts.total_words, counts.messages * words);
+        EXPECT_EQ(counts.critical_words, q == 1 ? 0 : 2 * q * words);
+    }
+}
+
+TEST(GridConfigTest, ValidatesTwoAndTwoPointFiveDimensionalGrids) {
+    EXPECT_EQ(dmm::grid_size(64, 4), 4u);
+    EXPECT_EQ(dmm::grid_size(256, 4), 8u);
+    dmm::SerialExecutor executor;
+    dmm::Matrix<float> a(32);
+    for (const auto [P, c] : std::vector<std::pair<std::size_t, std::size_t>>{
+            {0, 1}, {16, 0}, {3, 1}, {16, 4}, {64, 2}, {65, 4}})
+        EXPECT_THROW(dmm::grid_size(P, c), std::invalid_argument);
+    EXPECT_THROW((dmm::Cannon{64, 4}.run(a, a, executor)), std::invalid_argument);
+    EXPECT_THROW((dmm::Cannon{256, 1}.run(dmm::Matrix<float>(8), dmm::Matrix<float>(8), executor)),
+                 std::invalid_argument);
+}

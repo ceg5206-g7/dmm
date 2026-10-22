@@ -129,7 +129,7 @@ def test_runner_reuses_executor_and_excludes_setup_and_validation(data_dir, tmp_
         events.append("clock")
         return next(clock_values)
 
-    def multiply(a, b, executor):
+    def multiply(a, b, executor, **options):
         events.append("multiply")
         assert not a.flags.writeable and not b.flags.writeable
         return cannon.matmul(a, b, executor)
@@ -220,7 +220,7 @@ def test_later_failure_preserves_completed_rows(data_dir, tmp_path):
 
 
 def test_incorrect_result_is_not_recorded(data_dir, tmp_path, monkeypatch):
-    def incorrect(a, b, executor):
+    def incorrect(a, b, executor, **options):
         return np.zeros_like(a)
 
     monkeypatch.setattr(benchmark, "import_module", lambda name: SimpleNamespace(matmul=incorrect, validate_size=cannon.validate_size))
@@ -234,7 +234,7 @@ def test_incorrect_result_is_not_recorded(data_dir, tmp_path, monkeypatch):
 def test_each_repeat_is_validated_and_failure_preserves_only_completed_measurements(data_dir, tmp_path, monkeypatch):
     calls = []
 
-    def multiply(a, b, executor):
+    def multiply(a, b, executor, **options):
         calls.append((a, b, executor))
         return cannon.matmul(a, b, executor) if len(calls) == 1 else np.zeros_like(a)
 
@@ -314,11 +314,11 @@ def test_all_combinations_reuse_one_executor_per_mode_and_process_count(data_dir
         return ThreadExecutor(workers)
 
     def load_algorithm(module_name):
-        def validate_size(size):
+        def validate_size(size, **options):
             checks.append((module_name.rsplit(".", 1)[1], size))
             cannon.validate_size(size)
 
-        def multiply(a, b, executor):
+        def multiply(a, b, executor, **options):
             assert checks == expected_checks
             calls.append((module_name, a.shape[0]))
             return cannon.matmul(a, b, executor)
@@ -425,7 +425,7 @@ def test_metadata_captures_configuration_manifest_and_environment(data_dir, tmp_
     assert metadata["benchmark"] == {
         "data_dir": str(data_dir), "output": str(output), "algorithms": ["cannon"],
         "modes": {"sequential": {}, "threaded": {"workers": [1, 2]}},
-        "groups": [1, 0], "sizes": [16, 32], "repeats": 3, "warmups": 0,
+        "groups": [1, 0], "sizes": [16, 32], "repeats": 3, "warmups": 0, "P": 16, "c": 1,
     }
     assert metadata["dataset"] == json.loads((data_dir / "manifest.json").read_text())
     assert metadata["environment"] == {
@@ -590,7 +590,7 @@ def test_later_algorithms_are_validated_before_any_experiment_runs(data_dir, tmp
     def load_algorithm(module_name):
         name = module_name.rsplit(".", 1)[1]
 
-        def validate_size(size):
+        def validate_size(size, **options):
             checks.append((name, size))
             if name == "fox" and size == 32:
                 raise ValueError("test size limit is 16")
@@ -605,4 +605,30 @@ def test_later_algorithms_are_validated_before_any_experiment_runs(data_dir, tmp
     with pytest.raises(ValueError, match="fox.*size 32.*test size limit is 16"):
         benchmark.run_benchmark(config)
     assert checks == [("cannon", 16), ("cannon", 32), ("fox", 16), ("fox", 32)]
+    assert not output.parent.exists()
+
+
+@pytest.mark.parametrize("P", [1, 4, 16, 64, 256])
+def test_benchmark_passes_grid_to_algorithm_and_records_metadata(data_dir, tmp_path, monkeypatch, P):
+    calls = []
+    original = cannon.matmul
+
+    def multiply(a, b, executor, *, P, c):
+        calls.append((P, c))
+        return original(a, b, executor, P=P, c=c)
+
+    monkeypatch.setattr(cannon, "matmul", multiply)
+    output = tmp_path / f"P{P}.csv"
+    config = make_config(data_dir, output, P=P, c=1, warmups=1)
+    assert benchmark.run_benchmark(config) == 1
+    assert calls == [(P, 1), (P, 1)]
+    settings = json.loads(output.with_suffix(".json").read_text())["benchmark"]
+    assert (settings["P"], settings["c"]) == (P, 1)
+
+
+@pytest.mark.parametrize("P,c", [(3, 1), (64, 4), (16, 4)])
+def test_invalid_algorithm_grid_fails_before_output(data_dir, tmp_path, P, c):
+    output = tmp_path / "results" / "invalid.csv"
+    with pytest.raises(ValueError, match="c|grid"):
+        benchmark.run_benchmark(make_config(data_dir, output, P=P, c=c))
     assert not output.parent.exists()

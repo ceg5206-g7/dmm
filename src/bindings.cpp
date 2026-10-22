@@ -35,7 +35,19 @@ std::size_t worker_count(const py::object& value) {
     return static_cast<std::size_t>(count);
 }
 
-std::pair<py::array_t<float>, dmm::Trace> cannon_traced(const Array& a, const Array& b, dmm::Executor& executor) {
+std::size_t positive_integer(const py::object& value, const char* name) {
+    if (!PyLong_CheckExact(value.ptr()) || PyObject_RichCompareBool(value.ptr(), py::int_(0).ptr(), Py_LE) == 1)
+        throw std::invalid_argument(std::string(name) + " must be a positive integer");
+    const auto number = value.cast<std::size_t>();
+    if (number == 0) throw std::invalid_argument(std::string(name) + " must be a positive integer");
+    return number;
+}
+
+std::pair<py::array_t<float>, dmm::Trace> cannon_traced(const Array& a, const Array& b, dmm::Executor& executor,
+        const py::object& P, const py::object& c) {
+    const dmm::Cannon algorithm{positive_integer(P, "P"), positive_integer(c, "c")};
+    dmm::grid_size(algorithm.P, algorithm.c);
+    if (algorithm.c != 1) throw std::invalid_argument("Cannon requires c = 1");
     auto left = copy_input(a);
     auto right = copy_input(b);
     const auto n = static_cast<py::ssize_t>(left.size);
@@ -44,7 +56,6 @@ std::pair<py::array_t<float>, dmm::Trace> cannon_traced(const Array& a, const Ar
     dmm::Trace trace;
     {
         py::gil_scoped_release release;
-        const dmm::Cannon algorithm;
         auto result = algorithm.run(left, right, executor);
         const auto& values = result.product.values;
         std::copy(values.begin(), values.end(), destination);
@@ -53,14 +64,18 @@ std::pair<py::array_t<float>, dmm::Trace> cannon_traced(const Array& a, const Ar
     return {std::move(output), std::move(trace)};
 }
 
-py::array_t<float> cannon(const Array& a, const Array& b, dmm::Executor& executor) {
-    return cannon_traced(a, b, executor).first;
+py::array_t<float> cannon(const Array& a, const Array& b, dmm::Executor& executor,
+        const py::object& P, const py::object& c) {
+    return cannon_traced(a, b, executor, P, c).first;
 }
 } // namespace
 
 PYBIND11_MODULE(_native, module) {
-    module.doc() = "matmul-style fixed 4x4 Cannon with FP32 inputs, reusable workers and BSP traces.";
+    module.doc() = "Configurable square-grid Cannon with FP32 inputs, reusable workers and BSP traces.";
     module.attr("GRID") = dmm::GRID;
+    module.def("grid_size", [](const py::object& P, const py::object& c) {
+        return dmm::grid_size(positive_integer(P, "P"), positive_integer(c, "c"));
+    }, py::arg("P"), py::arg("c") = 1);
     module.attr("compiler") = __VERSION__;
     module.attr("build_type") = DMM_BUILD_TYPE;
     py::class_<dmm::Executor>(module, "Executor");
@@ -85,10 +100,10 @@ PYBIND11_MODULE(_native, module) {
         .def("close", &dmm::ThreadExecutor::close, py::call_guard<py::gil_scoped_release>());
     module.def("cannon", &cannon,
        py::arg("a").noconvert(), py::arg("b").noconvert(),
-       py::arg("executor"));
+       py::arg("executor"), py::kw_only(), py::arg("P") = 16, py::arg("c") = 1);
     module.def("cannon_traced", &cannon_traced,
        py::arg("a").noconvert(), py::arg("b").noconvert(),
-       py::arg("executor"));
+       py::arg("executor"), py::kw_only(), py::arg("P") = 16, py::arg("c") = 1);
 
     py::class_<dmm::MessageRecord>(module, "MessageRecord")
         .def_readonly("source", &dmm::MessageRecord::source)

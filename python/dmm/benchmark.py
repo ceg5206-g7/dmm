@@ -6,6 +6,7 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import asdict
 from datetime import datetime, timezone
 from importlib import import_module
+from functools import partial
 from itertools import product
 import json
 from math import isfinite
@@ -70,7 +71,7 @@ def save_run_metadata(config: BenchmarkConfig) -> Path:
         "git": git,
         "native": {
             "backend": "pybind11", "compiler": _native.compiler, "build_type": _native.build_type,
-            "execution": "fixed 4x4 Cannon; 16 logical nodes; 5 BSP supersteps with copied messages",
+            "execution": f"P={config.P}, c={config.c}; BSP supersteps with copied messages",
             "input_dtype": "float32", "reference_dtype": "float64",
             "timer": {"name": "time.perf_counter", **vars(get_clock_info("perf_counter"))},
             "timing": "algorithm call including input/output copies; excludes worker startup and validation",
@@ -142,10 +143,10 @@ def run_benchmark(config: BenchmarkConfig) -> int:
             raise ValueError(f"Algorithm {name!r} is not implemented") from error
         for size in config.sizes:
             try:
-                algorithm.validate_size(size)
+                algorithm.validate_size(size, P=config.P, c=config.c)
             except ValueError as error:
                 raise ValueError(f"Algorithm {name!r} does not support size {size}: {error}") from error
-        algorithms[name] = algorithm.matmul
+        algorithms[name] = partial(algorithm.matmul, P=config.P, c=config.c)
 
     dataset = load_manifest(config.data_dir)
     for name in ("groups", "sizes"):

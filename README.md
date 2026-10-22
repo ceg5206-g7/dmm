@@ -5,7 +5,7 @@ Cannon and the worker executor; pybind11 exposes them to Python. Python handles
 shared FP32 NumPy datasets, FP64 references, warmup, repeated timing, CSV output
 and plots.
 
-Cannon follows `matmul`'s fixed 4 × 4 logical grid as 16 logical nodes on a
+Cannon uses a configurable q × q logical grid (P=q², default P=16) on a
 BSP runtime: each node owns its A/B/C blocks, and the initial skew and the
 round shifts are real copied messages. Communication is counted per superstep,
 not delayed; BSP costs are computed from those counts afterwards (see
@@ -93,7 +93,8 @@ a = np.eye(4, dtype=np.float32)
 b = np.ones((4, 4), dtype=np.float32)
 
 with SerialExecutor() as executor:
-    c = matmul(a, b, executor)
+    c = matmul(a, b, executor)  # Default P=16, c=1.
+    c = matmul(a, b, executor, P=4, c=1)
 
 with ThreadExecutor(workers=2) as executor:
     c = matmul(a, b, executor)
@@ -108,7 +109,8 @@ counts = count(trace)  # Totals; count(trace.supersteps[s]) gives one superstep.
 cost = bsp_cost(counts, w=1, g=10, l=100)  # Recompute for any g/l without rerunning.
 ```
 
-The `matmul(A, B, executor)` interface matches the original Python framework.
+The `matmul(A, B, executor, *, P=16, c=1)` interface preserves existing calls.
+`validate_size` and `matmul_traced` accept the same keyword options.
 `dmm.execution` directly re-exports the bound C++ classes; it defines no Python
 executor classes. The Python executor object is the bound C++ executor itself.
 The thin algorithm module calls `_native.cannon(A, B, executor)`;
@@ -132,7 +134,7 @@ an independent matrix owned by the caller. The same algorithm object can be
 reused with different inputs and executors; earlier results stay unchanged.
 
 ```cpp
-dmm::Cannon algorithm;
+dmm::Cannon algorithm{64, 1}; // P, c; default construction uses 16, 1.
 dmm::Matrix<float> C = algorithm.matmul(A, B, executor);
 ```
 
@@ -144,9 +146,17 @@ for another context. Destruction also closes any remaining workers.
 
 Inputs must be finite, non-empty, square, matching native FP32 arrays. Other
 dtypes are rejected; convert explicitly in Python. Read-only, transposed and
-negative-stride inputs are supported. Sizes must be divisible by 4; padding
-is not implemented. The 16 logical nodes are independent of the worker
-count. The grid is fixed and has no YAML/API option.
+negative-stride inputs are supported. Sizes must be divisible by q=sqrt(P); padding
+is not implemented. P is independent of the worker count H. Cannon requires
+a positive square P and c=1. The shared `dmm::grid_size(P, c)` C++ helper
+(and `_native.grid_size` binding) validates 2D/2.5D grids with P=c*q*q and c dividing q;
+for example (64,4) and (256,4) are valid 2.5D grids, but Cannon rejects c>1.
+
+Benchmark YAML accepts scalar `P: 64` and `c: 1` for the entire run. Omitted
+values default to 16 and 1. The runner passes both to size validation, warmups
+and measured calls, and saves them in JSON run metadata. Invalid algorithm grids
+fail before dataset loading or result creation. Use separate runs/output paths
+for different configurations; the timing CSV schema is unchanged.
 
 Each call copies A/B into owned C++ matrices and returns an independent NumPy
 output. Copies are included in algorithm-call timing. C++ computation releases
@@ -165,15 +175,15 @@ copying a view does not allocate or copy matrix elements. Access uses
 builds assert element indices. Keep the source matrix alive and do not replace
 or reallocate its storage while a view is in use.
 
-The C++ implementation runs `matmul.algorithms.cannon`'s algorithm on 16
-logical nodes, node `(i, j)` having id `4i + j`, in five supersteps:
+The C++ implementation runs Cannon on P=q² logical nodes, node `(i, j)`
+having id `qi + j`, in q+1 supersteps:
 
 1. `skew`: each node copies its own A_ij and B_ij out of the input (the native
    distribution, not counted as communication) and zeroes its C tile. A_ij is sent
    to `(i, j - i)` and B_ij to `(i - j, j)`; row 0 of A and column 0 of B stay put.
-2. `multiply` × 4: each node receives the blocks sent to it, accumulates
-   `A_{i,k} B_{k,j}` with `k = (i + j + round) % 4` using scalar `i-k-j` loops,
-   and, in the first three rounds, sends A to its left and B to its upper neighbour.
+2. `multiply` × q: each node receives the blocks sent to it, accumulates
+   `A_{i,k} B_{k,j}` with `k = (i + j + round) % q` using scalar `i-k-j` loops,
+   and, in the first q−1 rounds, sends A to its left and B to its upper neighbour.
 3. After the last superstep, the C tiles are assembled into a newly allocated output.
 
 The accumulation order per output element is the same as before messages were
@@ -209,7 +219,7 @@ which `bsp_cost(counts, w=, g=, l=)` evaluates. No sleep or busy-wait injects ne
 time: wall-clock measures only the real computation and copies, while `g` and `l`
 are model parameters, so a γ/λ sweep recomputes costs from saved counts.
 
-For block size `b = n / 4`, Cannon's counts are
+For the default P=16 and block size `b = n / 4`, Cannon's counts are
 
 | Superstep | Messages | Total words | max h | max F |
 | --- | --- | --- | --- | --- |
@@ -253,7 +263,7 @@ Each run writes:
 - `benchmark_lite.csv`: one row per measured call, with times in seconds,
   algorithm/mode/workers/group/pair/size/repeat identifiers, maximum absolute
   error and Frobenius relative error. Serial `workers` is empty; `pair` is the
-  size index in the dataset manifest, as in `matmul`. The fixed grid is not a column.
+  size index in the dataset manifest, as in `matmul`. P and c are recorded in the accompanying JSON metadata.
 - `benchmark_lite.json`: the original `started_at`, `benchmark`, `dataset`,
   `environment` and `git` structure, plus a `native` section for compiler/build
   type, FP types, timing boundary and timer details. Settings include warmups. A dirty flag does not preserve local changes.
