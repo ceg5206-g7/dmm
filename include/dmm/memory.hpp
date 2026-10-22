@@ -69,6 +69,7 @@ public:
 private:
     friend class Node;
     friend class Bsp;
+    friend class PreparedBsp;
     Buffer(std::shared_ptr<detail::MemoryLedger> ledger, std::vector<float> values)
         : ledger_(std::move(ledger)), values_(std::move(values)) { ledger_->acquire(values_.capacity()); }
     void release() noexcept { if (ledger_) ledger_->release(values_.capacity()); }

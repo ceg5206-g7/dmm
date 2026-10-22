@@ -27,3 +27,8 @@ def matmul(A: np.ndarray, B: np.ndarray, executor: Executor, *, P: int = 16, c: 
 def matmul_traced(A: np.ndarray, B: np.ndarray, executor: Executor, *, P: int = 16, c: int = 1, native_layout: bool = False) -> tuple[np.ndarray, Trace]:
     """Return the common route trace, or an explicit unpadded native-layout test run."""
     return _native.cannon_traced(A, B, executor, P=P, c=c, native_layout=native_layout)
+
+
+def prepare(A: np.ndarray, B: np.ndarray, *, P: int = 16, c: int = 1):
+    """Prepare reusable storage/schedule; run_into measures common rows to rows."""
+    return _native.PreparedCannon(A, B, P=P, c=c)

@@ -1,4 +1,5 @@
 #include "dmm/cannon.hpp"
+#include "dmm/prepared.hpp"
 #include "dmm/sharding.hpp"
 #include "dmm/coverage.hpp"
 #include <pybind11/numpy.h>
@@ -103,6 +104,36 @@ PYBIND11_MODULE(_native, module) {
             return false;
         }, py::call_guard<py::gil_scoped_release>())
         .def("close", &dmm::ThreadExecutor::close, py::call_guard<py::gil_scoped_release>());
+    py::class_<dmm::Timing>(module, "Timing")
+        .def_readonly("total", &dmm::Timing::total)
+        .def_readonly("compute", &dmm::Timing::compute)
+        .def_readonly("copy", &dmm::Timing::copy)
+        .def_readonly("synchronization", &dmm::Timing::synchronization);
+    py::class_<dmm::RunTimings>(module, "RunTimings")
+        .def_readonly("end_to_end", &dmm::RunTimings::end_to_end)
+        .def_readonly("phases", &dmm::RunTimings::phases);
+    module.attr("phase_names") = dmm::PHASE_NAMES;
+    py::class_<dmm::PreparedCannon>(module, "PreparedCannon")
+        .def(py::init([](const Array& a, const Array& b, const py::object& P, const py::object& c) {
+            return std::make_unique<dmm::PreparedCannon>(copy_input(a), copy_input(b),
+                positive_integer(P, "P"), positive_integer(c, "c"));
+        }), py::arg("a").noconvert(), py::arg("b").noconvert(), py::kw_only(), py::arg("P") = 16, py::arg("c") = 1)
+        .def("run_into", [](dmm::PreparedCannon& plan, py::array_t<float, py::array::c_style> output, dmm::Executor& executor) {
+            if (output.ndim() != 2 || output.shape(0) != static_cast<py::ssize_t>(plan.size()) ||
+                output.shape(1) != static_cast<py::ssize_t>(plan.size())) throw std::invalid_argument("prepared output must match input shape");
+            auto* data = output.mutable_data();
+            const auto count = static_cast<std::size_t>(output.size());
+            py::gil_scoped_release release;
+            return plan.run_into({data, count}, executor);
+        }, py::arg("output").noconvert(), py::arg("executor"))
+        .def("trace", &dmm::PreparedCannon::trace, py::call_guard<py::gil_scoped_release>());
+    module.def("microbenchmark", [](const std::string& kind, const py::object& size,
+               const py::object& iterations, const py::object& nodes, dmm::Executor& executor) {
+        const auto s = positive_integer(size, "size"), it = positive_integer(iterations, "iterations"),
+                   P = positive_integer(nodes, "nodes");
+        py::gil_scoped_release release;
+        return dmm::microbenchmark(kind, s, it, P, executor);
+    }, py::arg("kind"), py::arg("size"), py::arg("iterations"), py::arg("nodes"), py::arg("executor"));
     module.def("cannon", &cannon,
        py::arg("a").noconvert(), py::arg("b").noconvert(),
        py::arg("executor"), py::kw_only(), py::arg("P") = 16, py::arg("c") = 1);
