@@ -417,3 +417,7 @@ trace, keeping the same actual padded dimensions. At n=16, P=16, the full path
 has S=11, F_total=8192, W_crit=512, C_total=2496 and C_crit=164; the native body
 has S=5, C_total=1920 and C_crit=128. `matmul_traced(..., native_layout=True)` is
 an explicit unpadded native-input test adapter requiring n divisible by sqrt(P).
+
+The versioned [project proposal](doc/docs/proposal.pdf) now specifies C++20
+in both its platform contract and build deliverables, matching CMake and the
+public concept/span interfaces. Its remaining acceptance conditions still apply.
