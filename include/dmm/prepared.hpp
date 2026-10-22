@@ -25,6 +25,8 @@ struct BufferView {
 class PreparedBsp {
 public:
     explicit PreparedBsp(std::size_t nodes);
+    std::size_t nodes() const noexcept { return memory_.size(); }
+    bool owns(std::size_t node, std::size_t buffer) const { return owners_.at(buffer) == node; }
     std::size_t allocate(std::size_t node, std::size_t words);
     std::span<float> buffer(std::size_t id);
     std::size_t step(const std::string& label);

@@ -219,33 +219,10 @@ PreparedCannon::PreparedCannon(Matrix<float> a, Matrix<float> b, std::size_t P, 
         if (P_ > 1) scratch_.push_back(plan_.allocate(node, height * block));
     }
     auto v = [&](std::size_t id) { return BufferView{id, 0, block}; };
-    auto convert = [&](const std::vector<std::size_t>& ids, std::size_t tag, bool input) {
-        const auto send_step = plan_.step(input ? "input_conversion" : "output_conversion");
-        const auto recv_step = plan_.step(input ? "input_conversion" : "output_conversion");
-        for (std::size_t source = 0; source < P_; ++source) {
-            const auto i = source / q_, j = source % q_;
-            // Save the retained rectangle before overwriting the same row/tile buffer.
-            const BufferView row{ids[source], j * block, n_};
-            const BufferView tile{ids[source], (source * height - i * block) * block, block};
-            const BufferView scratch{scratch_[source], 0, block};
-            plan_.copy(recv_step, source, input ? row : tile, scratch, height, block);
-            plan_.copy(recv_step, source, scratch, input ? tile : row, height, block);
-        }
-        for (std::size_t row_node = 0; row_node < P_; ++row_node) {
-            const auto i = row_node / q_;
-            for (std::size_t j = 0; j < q_; ++j) {
-                const auto tile_node = i * q_ + j;
-                if (row_node == tile_node) continue;
-                const BufferView row{ids[row_node], j * block, n_};
-                const BufferView tile{ids[tile_node], (row_node * height - i * block) * block, block};
-                const auto source = input ? row_node : tile_node, dest = input ? tile_node : row_node;
-                const auto msg = plan_.send(send_step, source, dest, tag, input ? row : tile,
-                                            {row_node * height, j * block, height, block});
-                plan_.receive(recv_step, dest, msg, input ? tile : row);
-            }
-        }
-    };
-    if (P_ > 1) { convert(left_, 0, true); convert(right_, 1, true); }
+    if (P_ > 1) {
+        rows_to_blocks(plan_,n_,1,left_,left_,0,scratch_);
+        rows_to_blocks(plan_,n_,1,right_,right_,1,scratch_);
+    }
     const auto skew = plan_.step("skew");
     for (std::size_t node = 0; node < P_; ++node) plan_.zero(P_ > 1 ? 0 : skew, node, result_[node]);
     const auto none = std::numeric_limits<std::size_t>::max();
@@ -273,7 +250,7 @@ PreparedCannon::PreparedCannon(Matrix<float> a, Matrix<float> b, std::size_t P, 
             pending_b[dest_b] = plan_.send(step, node, dest_b, 1, v(right_[node]), {k * block, j * block, block, block});
         }
     }
-    if (P_ > 1) convert(result_, 2, false);
+    if (P_ > 1) blocks_to_rows(plan_,n_,1,result_,result_,2,scratch_);
     plan_.seal(a_.size, n_, {q_, q_, q_});
 }
 RunTimings PreparedCannon::run_into(std::span<float> output, Executor& executor) {

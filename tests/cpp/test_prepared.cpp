@@ -1,6 +1,8 @@
 #include "dmm/prepared.hpp"
 #include "dmm/cannon.hpp"
 #include "dmm/coverage.hpp"
+#include "dmm/collectives.hpp"
+#include "dmm/sharding.hpp"
 #include <gtest/gtest.h>
 #include <atomic>
 #include <cstdlib>
@@ -121,4 +123,88 @@ TEST(PreparedTest, FailedExecutorBatchCanRecoverWithCorrectMemoryAndOutput) {
     EXPECT_EQ(output, expected);
     EXPECT_EQ(recovered.trace().peak_words, fresh.trace().peak_words);
     EXPECT_EQ(dmm::count(recovered.trace()), dmm::count(fresh.trace()));
+}
+
+TEST(PreparedTest, SharedPreparedTreesMatchRuntimeOnDisjointUnevenGroupsWithoutAllocation) {
+    const std::vector<dmm::TreeGroup> groups{{3,1,6,0}, {2,5}, {4}};
+    const std::vector<dmm::ElementRegion> regions(3, {0,0,2,3});
+    dmm::PreparedBsp prepared(7);
+    dmm::Bsp runtime(7);
+    auto values = runtime.buffers(6);
+    std::vector<std::size_t> buffers;
+    for (std::size_t node = 0; node < 7; ++node) {
+        buffers.push_back(prepared.allocate(node, 6));
+        std::fill(prepared.buffer(buffers.back()).begin(), prepared.buffer(buffers.back()).end(), static_cast<float>(node+1));
+        values[node].assign(6, static_cast<float>(node+1));
+    }
+    dmm::tree_broadcast(prepared, groups, buffers, 9, regions);
+    dmm::tree_reduce_sum(prepared, groups, buffers, 10, regions);
+    prepared.seal(7,7,{1,1,1});
+    dmm::ThreadExecutor executor(2);
+    allocations = 0; watch_allocations = true;
+    prepared.execute(executor);
+    watch_allocations = false;
+    EXPECT_EQ(allocations.load(), 0u);
+    dmm::tree_broadcast(runtime, executor, groups, values, 9, regions);
+    dmm::tree_reduce_sum(runtime, executor, groups, values, 10, regions);
+    auto expected = dmm::count(runtime.finish()), actual = dmm::count(prepared.trace());
+    actual.peak_words = expected.peak_words;
+    EXPECT_EQ(actual, expected);
+    for (std::size_t node = 0; node < 7; ++node)
+        EXPECT_TRUE(std::equal(prepared.buffer(buffers[node]).begin(), prepared.buffer(buffers[node]).end(), values[node].begin()));
+    EXPECT_EQ(prepared.buffer(buffers[3])[0], 16.f);
+    EXPECT_EQ(prepared.buffer(buffers[2])[0], 6.f);
+}
+
+TEST(PreparedTest, SharedPreparedTreeRejectsInvalidOwnersAndShapesBeforeAddingSteps) {
+    dmm::PreparedBsp plan(2);
+    const std::vector<std::size_t> buffers{plan.allocate(0,4), plan.allocate(1,4)};
+    const std::vector<dmm::TreeGroup> groups{{0,1}};
+    const std::vector<dmm::ElementRegion> wrong{{0,0,1,3}}, right{{0,0,2,2}};
+    EXPECT_THROW(dmm::tree_broadcast(plan, groups, buffers, 0, wrong), std::invalid_argument);
+    auto foreign = buffers; std::swap(foreign[0],foreign[1]);
+    EXPECT_THROW(dmm::tree_reduce_sum(plan, groups, foreign, 0, right), std::invalid_argument);
+    EXPECT_THROW(plan.seal(2,2,{1,1,1}), std::invalid_argument); // No step was added.
+    dmm::tree_broadcast(plan, groups, buffers, 0, right);
+    plan.seal(2,2,{1,1,1});
+}
+
+TEST(PreparedTest, SharedPreparedRowConversionsCoverReplicatedBaseLayouts) {
+    for (auto [P,c] : {std::pair{16u,1u}, {64u,4u}, {256u,4u}}) {
+        dmm::PreparedBsp plan(P);
+        const auto n = dmm::padded_size(17,P), q = dmm::grid_size(P,c), height = n/P, block = n/q;
+        std::vector<std::size_t> rows, tiles, output;
+        dmm::Matrix<float> matrix(17);
+        for (std::size_t i = 0; i < matrix.values.size(); ++i) matrix.values[i] = static_cast<float>(i);
+        auto expected = [&](std::size_t row, std::size_t col) { return row < 17 && col < 17 ? matrix.values[row*17+col] : 0.f; };
+        for (std::size_t node = 0; node < P; ++node) {
+            rows.push_back(plan.allocate(node,n*height));
+            tiles.push_back(plan.allocate(node,node < q*q ? block*block : 0));
+            output.push_back(plan.allocate(node,n*height));
+            for (std::size_t row = 0; row < height; ++row) for (std::size_t col = 0; col < n; ++col)
+                plan.buffer(rows[node])[row*n+col] = expected(node*height+row,col);
+            std::fill(plan.buffer(output[node]).begin(), plan.buffer(output[node]).end(), -1.f);
+        }
+        dmm::rows_to_blocks(plan,n,c,rows,tiles,0);
+        dmm::blocks_to_rows(plan,n,c,tiles,output,1);
+        plan.seal(17,n,{q,q,q});
+        dmm::SerialExecutor executor;
+        allocations = 0; watch_allocations = true;
+        plan.execute(executor);
+        watch_allocations = false;
+        EXPECT_EQ(allocations.load(),0u);
+        for (std::size_t node = 0; node < P; ++node) {
+            for (std::size_t row = 0; row < height; ++row) for (std::size_t col = 0; col < n; ++col)
+                ASSERT_EQ(plan.buffer(output[node])[row*n+col],expected(node*height+row,col));
+            if (node < q*q) for (std::size_t row = 0; row < block; ++row) for (std::size_t col = 0; col < block; ++col)
+                ASSERT_EQ(plan.buffer(tiles[node])[row*block+col],expected(node/q*block+row,node%q*block+col));
+        }
+        dmm::Bsp runtime(P);
+        const auto source = dmm::make_row_shards(runtime,matrix);
+        const auto native = dmm::rows_to_blocks(runtime,executor,source,c,0);
+        const auto gathered = dmm::blocks_to_rows(runtime,executor,native,1);
+        auto original = dmm::count(runtime.finish()), actual = dmm::count(plan.trace());
+        actual.peak_words = original.peak_words;
+        EXPECT_EQ(actual,original);
+    }
 }

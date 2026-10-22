@@ -19,4 +19,15 @@ Matrix<float> gather_row_shards(const RowShards&);
 BlockShards rows_to_blocks(Bsp&, Executor&, const RowShards&, std::size_t c, std::size_t tag);
 RowShards blocks_to_rows(Bsp&, Executor&, const BlockShards&, std::size_t tag);
 
+class PreparedBsp;
+// Append common conversions to a prepared plan. IDs name node-owned buffers;
+// base-layer block buffers need n²/q² words, rows n²/P. Aliased rows/blocks need
+// one n²/(P*q)-word scratch per node. P=1 uses the same row/block buffer.
+void rows_to_blocks(PreparedBsp&, std::size_t n, std::size_t c,
+                    std::span<const std::size_t> rows, std::span<const std::size_t> blocks,
+                    std::size_t tag, std::span<const std::size_t> scratch = {});
+void blocks_to_rows(PreparedBsp&, std::size_t n, std::size_t c,
+                    std::span<const std::size_t> blocks, std::span<const std::size_t> rows,
+                    std::size_t tag, std::span<const std::size_t> scratch = {});
+
 } // namespace dmm
