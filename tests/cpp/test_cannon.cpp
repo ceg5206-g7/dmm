@@ -7,6 +7,7 @@
 #include <random>
 #include <stdexcept>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -148,16 +149,12 @@ TEST(ValidationTest, PreservesFP64ReferencePrecision) {
     EXPECT_THROW(dmm::validate(result, expected), std::runtime_error);
 }
 
-TEST(CannonDispatchTest, SubmitsSixteenTilesInOneBatch) {
+TEST(CannonDispatchTest, RunsSixteenNodesInEachOfFiveSupersteps) {
     struct RecordingExecutor final : dmm::Executor {
-        std::size_t batches = 0;
-        std::vector<std::size_t> indices;
+        std::vector<std::size_t> batches;
         void for_each(std::size_t count, const std::function<void(std::size_t)>& task) override {
-            ++batches;
-            for (std::size_t i = 0; i < count; ++i) {
-                indices.push_back(i);
-                task(i);
-            }
+            batches.push_back(count);
+            for (std::size_t i = 0; i < count; ++i) task(i);
         }
     } executor;
     dmm::Matrix<float> a(4), b(4);
@@ -165,10 +162,62 @@ TEST(CannonDispatchTest, SubmitsSixteenTilesInOneBatch) {
     std::fill(b.values.begin(), b.values.end(), 1);
     const dmm::Cannon cannon;
     EXPECT_NO_THROW(dmm::validate(cannon.matmul(a, b, executor), constant_reference(4, 4)));
-    EXPECT_EQ(executor.batches, 1u);
-    ASSERT_EQ(executor.indices.size(), 16u);
-    for (std::size_t i = 0; i < executor.indices.size(); ++i) EXPECT_EQ(executor.indices[i], i);
+    EXPECT_EQ(executor.batches, (std::vector<std::size_t>(5, 16)));
 }
+
+class CannonTraceTest : public ::testing::TestWithParam<std::size_t> {};
+
+// Hand count for block size b: the skew moves 12 A and 12 B blocks; each of
+// three shifts moves all 32 blocks; every node does 2b^3 FLOPs per round.
+TEST_P(CannonTraceTest, MatchesHandComputedCommunication) {
+    auto executor = dmm::make_executor(GetParam());
+    for (std::size_t n : {4, 8, 12}) {
+        SCOPED_TRACE(::testing::Message() << "size=" << n);
+        dmm::Matrix<float> a(n), b(n);
+        std::fill(a.values.begin(), a.values.end(), 1);
+        std::fill(b.values.begin(), b.values.end(), 1);
+        const auto [product, trace] = dmm::Cannon{}.run(a, b, *executor);
+        EXPECT_NO_THROW(dmm::validate(product, constant_reference(n, static_cast<double>(n))));
+        const auto block = n / 4, words = block * block, flops = 2 * words * block;
+        ASSERT_EQ(trace.nodes, 16u);
+        ASSERT_EQ(trace.supersteps.size(), 5u);
+        EXPECT_EQ(dmm::count(trace), (dmm::Counts{5, 16 * 4 * flops, 4 * flops,
+                                                  120 * words, 8 * words, 120}));
+        EXPECT_EQ(dmm::count(trace.supersteps[0]), (dmm::Counts{1, 0, 0, 24 * words, 2 * words, 24}));
+        for (std::size_t s = 1; s < 4; ++s)
+            EXPECT_EQ(dmm::count(trace.supersteps[s]),
+                      (dmm::Counts{1, 16 * flops, flops, 32 * words, 2 * words, 32}));
+        EXPECT_EQ(dmm::count(trace.supersteps[4]), (dmm::Counts{1, 16 * flops, flops, 0, 0, 0}));
+        EXPECT_EQ(trace.supersteps[0].label, "skew");
+        for (std::size_t s = 1; s < 5; ++s) EXPECT_EQ(trace.supersteps[s].label, "multiply");
+    }
+}
+
+TEST_P(CannonTraceTest, SkewsAndShiftsAlongGridRowsAndColumns) {
+    auto executor = dmm::make_executor(GetParam());
+    dmm::Matrix<float> a(8), b(8);
+    const auto trace = dmm::Cannon{}.run(a, b, *executor).trace;
+    const auto messages_from = [&](std::size_t step, std::size_t source) {
+        std::vector<std::pair<std::size_t, std::size_t>> sent; // (destination, tag)
+        for (const auto& message : trace.supersteps[step].messages)
+            if (message.source == source) {
+                EXPECT_EQ(message.words, 4u);
+                sent.emplace_back(message.destination, message.tag);
+            }
+        return sent;
+    };
+    using Sent = std::vector<std::pair<std::size_t, std::size_t>>;
+    // Node (1, 2) = 6 skews A to (1, 1) = 5 and B to (3, 2) = 14, then shifts to (1, 1) and (0, 2).
+    EXPECT_EQ(messages_from(0, 6), (Sent{{5, 0}, {14, 1}}));
+    EXPECT_EQ(messages_from(1, 6), (Sent{{5, 0}, {2, 1}}));
+    // Node (0, 0) keeps both blocks during the skew.
+    EXPECT_TRUE(messages_from(0, 0).empty());
+    EXPECT_EQ(messages_from(3, 0), (Sent{{3, 0}, {12, 1}}));
+    EXPECT_TRUE(messages_from(4, 0).empty());
+}
+
+INSTANTIATE_TEST_SUITE_P(Workers, CannonTraceTest, ::testing::Values(0, 2),
+                         ::testing::PrintToStringParamName());
 
 TEST(CannonStateTest, ResultsAreIndependentAcrossCallsAndExecutors) {
     dmm::ThreadExecutor executor(2);

@@ -70,7 +70,7 @@ def save_run_metadata(config: BenchmarkConfig) -> Path:
         "git": git,
         "native": {
             "backend": "pybind11", "compiler": _native.compiler, "build_type": _native.build_type,
-            "execution": "fixed 4x4 Cannon; 16 full-tile tasks; no communication simulation",
+            "execution": "fixed 4x4 Cannon; 16 logical nodes; 5 BSP supersteps with copied messages",
             "input_dtype": "float32", "reference_dtype": "float64",
             "timer": {"name": "time.perf_counter", **vars(get_clock_info("perf_counter"))},
             "timing": "algorithm call including input/output copies; excludes worker startup and validation",

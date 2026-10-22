@@ -3,6 +3,7 @@
 import numpy as np
 
 from dmm import _native
+from dmm.bsp import Trace
 from dmm.execution import Executor
 
 GRID = 4
@@ -16,7 +17,11 @@ def validate_size(size: int) -> None:
         raise ValueError(f"Cannon matrix size must be divisible by {GRID}")
 
 
-
 def matmul(A: np.ndarray, B: np.ndarray, executor: Executor) -> np.ndarray:
     """Multiply FP32 square matrices through the selected C++ executor."""
     return _native.cannon(A, B, executor)
+
+
+def matmul_traced(A: np.ndarray, B: np.ndarray, executor: Executor) -> tuple[np.ndarray, Trace]:
+    """Multiply like matmul and also return the per-superstep message trace."""
+    return _native.cannon_traced(A, B, executor)

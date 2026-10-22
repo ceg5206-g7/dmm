@@ -1,6 +1,5 @@
 #include "dmm/cannon.hpp"
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <stdexcept>
 #include <string>
@@ -10,64 +9,88 @@
 namespace dmm {
 namespace {
 
-struct Task {
-    std::size_t row, col;
-    std::array<std::pair<MatrixBlockView<float>, MatrixBlockView<float>>, GRID> pairs;
+enum Tag : std::size_t { A_BLOCK, B_BLOCK };
+
+// Node-private blocks; node code reads and writes only its own entry.
+struct Local {
+    std::vector<float> a, b, c;
 };
 
-std::vector<Task> build_tasks(const Matrix<float>& a, const Matrix<float>& b) {
-    const auto n = a.size, block = n / GRID;
-    std::vector<Task> tasks;
-    tasks.reserve(GRID * GRID);
-    for (std::size_t i = 0; i < GRID; ++i)
-        for (std::size_t j = 0; j < GRID; ++j) {
-            Task task{i, j, {}};
-            for (std::size_t stage = 0; stage < GRID; ++stage) {
-                // shortcut: shifts are represented by views; implement message exchange when adding communication simulation.
-                const auto k = (i + j + stage) % GRID;
-                task.pairs[stage] = {a.block(i * block, k * block, block),
-                                     b.block(k * block, j * block, block)};
-            }
-            tasks.push_back(task);
-        }
-    return tasks;
+std::size_t node_at(std::size_t row, std::size_t col) { return row % GRID * GRID + col % GRID; }
+
+std::vector<float> load_block(const Matrix<float>& matrix, std::size_t row, std::size_t col, std::size_t block) {
+    const auto view = matrix.block(row * block, col * block, block);
+    std::vector<float> values(block * block);
+    for (std::size_t i = 0; i < block; ++i) std::copy_n(&view(i, 0), block, values.data() + i * block);
+    return values;
 }
 
-std::vector<float> compute_tile(const Task& task) {
-    const auto block = task.pairs[0].first.size;
-    std::vector<float> tile(block * block, 0.0f);
-    for (const auto& [a, b] : task.pairs)
-        for (std::size_t i = 0; i < block; ++i) {
-            auto* output_row = tile.data() + i * block;
-            for (std::size_t k = 0; k < block; ++k) {
-                const auto value = a(i, k);
-                for (std::size_t j = 0; j < block; ++j)
-                    output_row[j] += value * b(k, j);
-            }
+void multiply_add(Local& local, std::size_t block) {
+    for (std::size_t i = 0; i < block; ++i) {
+        auto* output_row = local.c.data() + i * block;
+        for (std::size_t k = 0; k < block; ++k) {
+            const auto value = local.a[i * block + k];
+            for (std::size_t j = 0; j < block; ++j)
+                output_row[j] += value * local.b[k * block + j];
         }
-    return tile;
+    }
 }
 
 } // namespace
 
-Matrix<float> Cannon::matmul(const Matrix<float>& a, const Matrix<float>& b, Executor& executor) const {
+Traced Cannon::run(const Matrix<float>& a, const Matrix<float>& b, Executor& executor) const {
     if (a.size != b.size || a.values.size() != detail::elements<float>(a.size) ||
         b.values.size() != detail::elements<float>(b.size))
         throw std::invalid_argument("inputs must be matching square matrices");
     if (a.size % GRID != 0)
         throw std::invalid_argument("Cannon matrix size must be divisible by 4");
-    const auto tasks = build_tasks(a, b);
-    const auto n = a.size, block = n / GRID;
-    std::vector<std::vector<float>> tiles(tasks.size());
-    executor.for_each(tasks.size(), [&](std::size_t index) {
-        tiles[index] = compute_tile(tasks[index]);
+    const auto n = a.size, block = n / GRID, words = block * block;
+    std::vector<Local> locals(GRID * GRID);
+    Bsp machine(locals.size());
+
+    // Node (i, j) starts with A_ij and B_ij, then skews A left by i and B up by j.
+    machine.superstep("skew", executor, [&](Node& node) {
+        const auto i = node.id() / GRID, j = node.id() % GRID;
+        auto& local = locals[node.id()];
+        local.a = load_block(a, i, j, block);
+        local.b = load_block(b, i, j, block);
+        local.c.assign(words, 0.0f);
+        if (i != 0) node.send(node_at(i, j + GRID - i), A_BLOCK, local.a);
+        if (j != 0) node.send(node_at(i + GRID - j, j), B_BLOCK, local.b);
     });
+    // Round s multiplies A_{i,k} B_{k,j} with k = (i + j + s) % 4, then shifts A left and B up.
+    for (std::size_t round = 0; round < GRID; ++round)
+        machine.superstep("multiply", executor, [&](Node& node) {
+            const auto i = node.id() / GRID, j = node.id() % GRID;
+            auto& local = locals[node.id()];
+            if (round == 0) {
+                if (i != 0) local.a = node.receive(node_at(i, j + i), A_BLOCK, words);
+                if (j != 0) local.b = node.receive(node_at(i + j, j), B_BLOCK, words);
+            } else {
+                local.a = node.receive(node_at(i, j + 1), A_BLOCK, words);
+                local.b = node.receive(node_at(i + 1, j), B_BLOCK, words);
+            }
+            multiply_add(local, block);
+            node.compute(2 * words * block);
+            if (round + 1 < GRID) {
+                node.send(node_at(i, j + GRID - 1), A_BLOCK, local.a);
+                node.send(node_at(i + GRID - 1, j), B_BLOCK, local.b);
+            }
+        });
+    auto trace = machine.finish();
+
     Matrix<float> output(n);
-    for (std::size_t index = 0; index < tasks.size(); ++index)
+    for (std::size_t id = 0; id < locals.size(); ++id) {
+        const auto row = id / GRID, col = id % GRID;
         for (std::size_t i = 0; i < block; ++i)
-            std::copy_n(tiles[index].data() + i * block, block,
-                        output.values.data() + (tasks[index].row * block + i) * n + tasks[index].col * block);
-    return output;
+            std::copy_n(locals[id].c.data() + i * block, block,
+                        output.values.data() + (row * block + i) * n + col * block);
+    }
+    return {std::move(output), std::move(trace)};
+}
+
+Matrix<float> Cannon::matmul(const Matrix<float>& a, const Matrix<float>& b, Executor& executor) const {
+    return run(a, b, executor).product;
 }
 
 Error validate(const Matrix<float>& result, const Matrix<double>& reference,

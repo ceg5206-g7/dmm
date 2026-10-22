@@ -44,7 +44,7 @@ def test_native_pipeline_outputs_samples_metadata_and_plots(dataset, tmp_path):
     assert metadata["native"]["reference_dtype"] == "float64"
     assert metadata["native"]["input_dtype"] == "float32"
     assert metadata["native"]["timer"]["name"] == "time.perf_counter"
-    assert "no communication simulation" in metadata["native"]["execution"]
+    assert "BSP supersteps" in metadata["native"]["execution"]
     with config.output.open(newline="") as handle:
         assert len(list(csv.DictReader(handle))) == 24
     summary = summarize_results(config.output)

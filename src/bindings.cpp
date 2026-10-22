@@ -1,9 +1,11 @@
 #include "dmm/cannon.hpp"
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <utility>
 
 namespace py = pybind11;
 
@@ -33,25 +35,31 @@ std::size_t worker_count(const py::object& value) {
     return static_cast<std::size_t>(count);
 }
 
-py::array_t<float> cannon(const Array& a, const Array& b, dmm::Executor& executor) {
+std::pair<py::array_t<float>, dmm::Trace> cannon_traced(const Array& a, const Array& b, dmm::Executor& executor) {
     auto left = copy_input(a);
     auto right = copy_input(b);
     const auto n = static_cast<py::ssize_t>(left.size);
     py::array_t<float> output({n, n});
     auto* destination = output.mutable_data();
+    dmm::Trace trace;
     {
         py::gil_scoped_release release;
         const dmm::Cannon algorithm;
-        const auto result = algorithm.matmul(left, right, executor);
-        const auto& values = result.values;
+        auto result = algorithm.run(left, right, executor);
+        const auto& values = result.product.values;
         std::copy(values.begin(), values.end(), destination);
+        trace = std::move(result.trace);
     }
-    return output;
+    return {std::move(output), std::move(trace)};
+}
+
+py::array_t<float> cannon(const Array& a, const Array& b, dmm::Executor& executor) {
+    return cannon_traced(a, b, executor).first;
 }
 } // namespace
 
 PYBIND11_MODULE(_native, module) {
-    module.doc() = "matmul-style fixed 4x4 Cannon with FP32 inputs and reusable workers.";
+    module.doc() = "matmul-style fixed 4x4 Cannon with FP32 inputs, reusable workers and BSP traces.";
     module.attr("GRID") = dmm::GRID;
     module.attr("compiler") = __VERSION__;
     module.attr("build_type") = DMM_BUILD_TYPE;
@@ -78,4 +86,32 @@ PYBIND11_MODULE(_native, module) {
     module.def("cannon", &cannon,
        py::arg("a").noconvert(), py::arg("b").noconvert(),
        py::arg("executor"));
+    module.def("cannon_traced", &cannon_traced,
+       py::arg("a").noconvert(), py::arg("b").noconvert(),
+       py::arg("executor"));
+
+    py::class_<dmm::MessageRecord>(module, "MessageRecord")
+        .def_readonly("source", &dmm::MessageRecord::source)
+        .def_readonly("destination", &dmm::MessageRecord::destination)
+        .def_readonly("tag", &dmm::MessageRecord::tag)
+        .def_readonly("words", &dmm::MessageRecord::words);
+    py::class_<dmm::SuperstepRecord>(module, "SuperstepRecord")
+        .def_readonly("label", &dmm::SuperstepRecord::label)
+        .def_readonly("flops", &dmm::SuperstepRecord::flops)
+        .def_readonly("messages", &dmm::SuperstepRecord::messages);
+    py::class_<dmm::Trace>(module, "Trace")
+        .def_readonly("nodes", &dmm::Trace::nodes)
+        .def_readonly("supersteps", &dmm::Trace::supersteps);
+    py::class_<dmm::Counts>(module, "Counts")
+        .def_readonly("supersteps", &dmm::Counts::supersteps)
+        .def_readonly("total_flops", &dmm::Counts::total_flops)
+        .def_readonly("critical_flops", &dmm::Counts::critical_flops)
+        .def_readonly("total_words", &dmm::Counts::total_words)
+        .def_readonly("critical_words", &dmm::Counts::critical_words)
+        .def_readonly("messages", &dmm::Counts::messages);
+    module.def("count", py::overload_cast<const dmm::Trace&>(&dmm::count), py::arg("trace"));
+    module.def("count", py::overload_cast<const dmm::SuperstepRecord&>(&dmm::count), py::arg("superstep"));
+    module.def("bsp_cost", [](const dmm::Counts& counts, double w, double g, double l) {
+        return dmm::bsp_cost(counts, {w, g, l});
+    }, py::arg("counts"), py::kw_only(), py::arg("w") = 1.0, py::arg("g") = 0.0, py::arg("l") = 0.0);
 }
