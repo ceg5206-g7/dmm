@@ -99,3 +99,26 @@ TEST(PreparedTest, IndependentMicrobenchmarksMeasureRealWork) {
         EXPECT_GT(dmm::microbenchmark(kind, 32, 4, 2, executor), 0);
     EXPECT_THROW(dmm::microbenchmark("fake",32,4,2,executor), std::invalid_argument);
 }
+
+
+TEST(PreparedTest, FailedExecutorBatchCanRecoverWithCorrectMemoryAndOutput) {
+    class FailingExecutor : public dmm::Executor {
+        int calls = 0;
+        void for_each(std::size_t n, const std::function<void(std::size_t)>& task) override {
+            if (++calls == 4) throw std::runtime_error("interrupted after delivery");
+            for (std::size_t i = 0; i < n; ++i) task(i);
+        }
+    } failing;
+    dmm::Matrix<float> a(17);
+    std::fill(a.values.begin(), a.values.end(), .25f);
+    dmm::PreparedCannon recovered(a,a,4), fresh(a,a,4);
+    dmm::SerialExecutor executor;
+    std::vector<float> output(a.values.size()), expected(a.values.size());
+    EXPECT_THROW(recovered.run_into(output, failing), std::runtime_error);
+    EXPECT_THROW(recovered.trace(), std::logic_error);
+    recovered.run_into(output, executor);
+    fresh.run_into(expected, executor);
+    EXPECT_EQ(output, expected);
+    EXPECT_EQ(recovered.trace().peak_words, fresh.trace().peak_words);
+    EXPECT_EQ(dmm::count(recovered.trace()), dmm::count(fresh.trace()));
+}

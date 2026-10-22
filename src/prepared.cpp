@@ -105,11 +105,13 @@ void PreparedBsp::seal(std::size_t original, std::size_t padded, CoverageGrid gr
     // Reuse each sender's same-size message slots after all previous receives finish.
     std::map<std::tuple<std::size_t, std::size_t, std::size_t>, std::size_t> cache;
     std::map<std::tuple<std::size_t, std::size_t, std::size_t>, std::size_t> ordinals;
-    for (auto& m : messages_) {
+    for (const auto& m : messages_) {
         const auto& r = m.region;
         if (!m.consumed || r.row > padded || r.rows > padded - r.row || r.col > padded || r.cols > padded - r.col)
             throw std::invalid_argument("undrained prepared message or region outside padded matrix");
-        const auto words = r.rows * r.cols;
+    }
+    for (auto& m : messages_) {
+        const auto words = m.region.rows * m.region.cols;
         const auto ordinal = ordinals[{m.step, m.source, words}]++;
         const auto key = std::tuple{m.source, words, ordinal};
         if (!cache.contains(key)) cache[key] = allocate(m.source, words);
@@ -133,6 +135,9 @@ void PreparedBsp::seal(std::size_t original, std::size_t padded, CoverageGrid gr
 RunTimings PreparedBsp::execute(Executor& executor) {
     if (!sealed_) throw std::logic_error("seal prepared plan before execution");
     executed_ = false;
+    // A failed executor batch may leave delivered cache slots at their recipients.
+    for (const auto& m : messages_)
+        if (buffers_[m.storage].ledger_ != memory_[m.source]) buffers_[m.storage].rebind(memory_[m.source]);
     for (auto& ledger : memory_) ledger->peak = ledger->live;
     for (auto& m : messages_) { m.sent = false; m.received = false; }
     RunTimings result;
