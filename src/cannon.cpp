@@ -39,8 +39,8 @@ NodeBuffers multiply_blocks(Bsp& machine, Executor& executor, NodeBuffers a,
                 a[id] = node.receive(node_at(i, j + 1, q), A_BLOCK, words);
                 b[id] = node.receive(node_at(i + 1, j, q), B_BLOCK, words);
             }
-            gemm_add(block, block, block, a[id], block, b[id], block, c[id], block);
-            node.compute(2 * words * block);
+            node.multiply_add({i, k, j, block, block, block},
+                              a[id], block, b[id], block, c[id], block);
             if (round + 1 < q) {
                 node.send(node_at(i, j + q - 1, q), A_BLOCK, a[id],
                           ElementRegion{i * block, k * block, block, block});
@@ -79,7 +79,7 @@ Traced Cannon::run(const Matrix<float>& a, const Matrix<float>& b, Executor& exe
     auto rows_c = blocks_to_rows(machine, executor, product, C_BLOCK);
     product.values.clear();
     auto trace = machine.finish();
-    trace.original_size = a.size; trace.padded_size = n;
+    trace.original_size = a.size; trace.padded_size = n; trace.coverage = {q, q, q};
     return {gather_row_shards(rows_c), std::move(trace)};
 }
 
@@ -99,7 +99,7 @@ Traced Cannon::run_native(const Matrix<float>& a, const Matrix<float>& b, Execut
             std::copy_n(tiles[id].data() + i * block, block,
                         output.values.data() + (id / q * block + i) * a.size + id % q * block);
     auto trace = machine.finish();
-    trace.original_size = a.size; trace.padded_size = a.size;
+    trace.original_size = a.size; trace.padded_size = a.size; trace.coverage = {q, q, q};
     return {std::move(output), std::move(trace)};
 }
 

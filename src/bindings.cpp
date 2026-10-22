@@ -1,5 +1,6 @@
 #include "dmm/cannon.hpp"
 #include "dmm/sharding.hpp"
+#include "dmm/coverage.hpp"
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -114,6 +115,20 @@ PYBIND11_MODULE(_native, module) {
         .def_readonly("col", &dmm::ElementRegion::col)
         .def_readonly("rows", &dmm::ElementRegion::rows)
         .def_readonly("cols", &dmm::ElementRegion::cols);
+    py::class_<dmm::ProductRegion>(module, "ProductRegion")
+        .def_readonly("i", &dmm::ProductRegion::i)
+        .def_readonly("k", &dmm::ProductRegion::k)
+        .def_readonly("j", &dmm::ProductRegion::j)
+        .def_readonly("m", &dmm::ProductRegion::m)
+        .def_readonly("n", &dmm::ProductRegion::n)
+        .def_readonly("inner", &dmm::ProductRegion::inner);
+    py::class_<dmm::ProductRecord>(module, "ProductRecord")
+        .def_readonly("node", &dmm::ProductRecord::node)
+        .def_readonly("product", &dmm::ProductRecord::product);
+    py::class_<dmm::CoverageGrid>(module, "CoverageGrid")
+        .def_readonly("row_parts", &dmm::CoverageGrid::row_parts)
+        .def_readonly("inner_parts", &dmm::CoverageGrid::inner_parts)
+        .def_readonly("col_parts", &dmm::CoverageGrid::col_parts);
     py::class_<dmm::MessageRecord>(module, "MessageRecord")
         .def_readonly("source", &dmm::MessageRecord::source)
         .def_readonly("destination", &dmm::MessageRecord::destination)
@@ -124,13 +139,15 @@ PYBIND11_MODULE(_native, module) {
         .def_readonly("label", &dmm::SuperstepRecord::label)
         .def_readonly("flops", &dmm::SuperstepRecord::flops)
         .def_readonly("messages", &dmm::SuperstepRecord::messages)
-        .def_readonly("peak_words", &dmm::SuperstepRecord::peak_words);
+        .def_readonly("peak_words", &dmm::SuperstepRecord::peak_words)
+        .def_readonly("products", &dmm::SuperstepRecord::products);
     py::class_<dmm::Trace>(module, "Trace")
         .def_readonly("nodes", &dmm::Trace::nodes)
         .def_readonly("supersteps", &dmm::Trace::supersteps)
         .def_readonly("peak_words", &dmm::Trace::peak_words)
         .def_readonly("original_size", &dmm::Trace::original_size)
-        .def_readonly("padded_size", &dmm::Trace::padded_size);
+        .def_readonly("padded_size", &dmm::Trace::padded_size)
+        .def_readonly("coverage", &dmm::Trace::coverage);
     py::class_<dmm::Counts>(module, "Counts")
         .def_readonly("supersteps", &dmm::Counts::supersteps)
         .def_readonly("total_flops", &dmm::Counts::total_flops)
@@ -141,6 +158,7 @@ PYBIND11_MODULE(_native, module) {
         .def_readonly("peak_words", &dmm::Counts::peak_words);
     module.def("count", py::overload_cast<const dmm::Trace&>(&dmm::count), py::arg("trace"));
     module.def("count", py::overload_cast<const dmm::SuperstepRecord&>(&dmm::count), py::arg("superstep"));
+    module.def("validate_coverage", &dmm::validate_coverage, py::arg("trace"));
     module.def("count_native", &dmm::count_native, py::arg("trace"));
     module.def("bsp_cost", [](const dmm::Counts& counts, double w, double g, double l) {
         return dmm::bsp_cost(counts, {w, g, l});

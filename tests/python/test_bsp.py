@@ -133,3 +133,20 @@ def test_common_and_native_costs_have_explicit_conversion_boundary_and_hand_coun
     assert (body.supersteps, body.total_words, body.critical_words) == (5, 1920, 128)
     assert (body.total_flops, body.messages, body.peak_words) == (
         standalone.total_flops, standalone.messages, standalone.peak_words)
+
+
+@pytest.mark.parametrize("P", [1, 4, 16, 64, 256])
+def test_executed_kernel_records_cover_every_block_triple_once(P):
+    from dmm.bsp import validate_coverage
+    A = np.ones((17, 17), dtype=np.float32)
+    with ThreadExecutor(2) as executor:
+        C, trace = cannon.matmul_traced(A, A, executor, P=P)
+    np.testing.assert_array_equal(C, np.full((17, 17), 17, dtype=np.float32))
+    validate_coverage(trace)
+    q = int(P**0.5)
+    records = [r for step in trace.supersteps for r in step.products]
+    assert len(records) == q**3
+    assert {(r.product.i, r.product.k, r.product.j) for r in records} == {
+        (i, k, j) for i in range(q) for k in range(q) for j in range(q)}
+    assert (trace.coverage.row_parts, trace.coverage.inner_parts, trace.coverage.col_parts) == (q, q, q)
+    assert all(r.product.m == r.product.n == r.product.inner == trace.padded_size // q for r in records)

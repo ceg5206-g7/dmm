@@ -1,4 +1,5 @@
 #include "dmm/bsp.hpp"
+#include "dmm/gemm.hpp"
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -75,6 +76,22 @@ void Node::send(std::size_t destination, std::size_t tag, std::span<const float>
     state_.outbox.push_back({destination, tag, Buffer(state_.memory, {payload.begin(), payload.end()}), region});
 }
 
+void Node::multiply_add(const ProductRegion& product,
+                        std::span<const float> a, std::size_t lda,
+                        std::span<const float> b, std::size_t ldb,
+                        std::span<float> c, std::size_t ldc) {
+    const auto& p = product;
+    if (p.m == 0 || p.n == 0 || p.inner == 0 ||
+        p.m > std::numeric_limits<std::size_t>::max() / p.n / p.inner / 2)
+        throw std::invalid_argument("recorded GEMM dimensions must be positive and FLOPs must fit");
+    const auto work = 2 * p.m * p.n * p.inner;
+    if (work > std::numeric_limits<std::size_t>::max() - state_.flops)
+        throw std::overflow_error("node FLOP counter overflow");
+    gemm_add(p.m, p.n, p.inner, a, lda, b, ldb, c, ldc);
+    state_.products.push_back({id_, product});
+    compute(work);
+}
+
 Buffer Node::receive(std::size_t source, std::size_t tag, std::size_t words) {
     if (source >= nodes_) throw std::out_of_range("message source is not a logical node");
     const auto message = state_.inbox.find({source, tag});
@@ -122,6 +139,8 @@ void Bsp::superstep(std::string label, Executor& executor, const std::function<v
     for (std::size_t source = 0; source < nodes; ++source) {
         auto& state = states_[source];
         record.flops[source] = std::exchange(state.flops, 0);
+        record.products.insert(record.products.end(), state.products.begin(), state.products.end());
+        state.products.clear();
         for (auto& message : state.outbox) {
             record.messages.push_back({source, message.destination, message.tag, message.payload.size(), message.region});
             message.payload.rebind(states_[message.destination].memory);

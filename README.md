@@ -421,3 +421,9 @@ an explicit unpadded native-input test adapter requiring n divisible by sqrt(P).
 The versioned [project proposal](doc/docs/proposal.pdf) now specifies C++20
 in both its platform contract and build deliverables, matching CMake and the
 public concept/span interfaces. Its remaining acceptance conditions still apply.
+
+`Node::multiply_add` couples the shared kernel call with actual (i,k,j), GEMM
+shape and FLOP records. Set `Trace.coverage` to its uniform block partition
+and run `dmm.bsp.validate_coverage(trace)` to reject missing/duplicate blocks,
+wrong shapes and inconsistent node work. The independent FP64 oracle remains
+necessary; trace metadata is not included in payload-memory budgets.

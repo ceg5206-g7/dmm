@@ -19,6 +19,18 @@ struct ElementRegion {
     std::size_t row, col, rows, cols;
 };
 
+struct ProductRegion {
+    std::size_t i, k, j; // Uniform block indices, not scalar offsets.
+    std::size_t m, n, inner; // Actual GEMM dimensions.
+};
+struct ProductRecord {
+    std::size_t node;
+    ProductRegion product;
+};
+struct CoverageGrid {
+    std::size_t row_parts = 0, inner_parts = 0, col_parts = 0;
+};
+
 // Payloads are counted in FP32 words; a multiply-add counts as two FLOPs.
 struct MessageRecord {
     std::size_t source, destination, tag, words;
@@ -30,6 +42,7 @@ struct SuperstepRecord {
     std::vector<std::size_t> flops; // Indexed by logical node.
     std::vector<MessageRecord> messages;
     std::vector<std::size_t> peak_words;
+    std::vector<ProductRecord> products{};
 };
 
 struct Trace {
@@ -37,6 +50,7 @@ struct Trace {
     std::vector<SuperstepRecord> supersteps;
     std::vector<std::size_t> peak_words;
     std::size_t original_size = 0, padded_size = 0;
+    CoverageGrid coverage{};
 };
 
 // h(r, s) is the larger of the words node r sends and receives in superstep s.
@@ -74,6 +88,7 @@ struct Message {
 struct NodeState {
     std::vector<Message> outbox;
     std::map<std::pair<std::size_t, std::size_t>, Buffer> inbox; // (source, tag)
+    std::vector<ProductRecord> products{};
     std::size_t flops = 0;
     std::shared_ptr<MemoryLedger> memory = std::make_shared<MemoryLedger>();
 };
@@ -90,6 +105,10 @@ public:
     // Moves out a message delivered at the end of the previous superstep.
     Buffer receive(std::size_t source, std::size_t tag, std::size_t words);
     Buffer buffer(std::size_t words = 0) const { return Buffer(state_.memory, std::vector<float>(words)); }
+    void multiply_add(const ProductRegion& product,
+                      std::span<const float> a, std::size_t lda,
+                      std::span<const float> b, std::size_t ldb,
+                      std::span<float> c, std::size_t ldc);
     void compute(std::size_t flops) noexcept { state_.flops += flops; }
 
 private:
