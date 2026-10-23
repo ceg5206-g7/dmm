@@ -150,7 +150,7 @@ TEST(ValidationTest, PreservesFP64ReferencePrecision) {
     EXPECT_THROW(dmm::validate(result, expected), std::runtime_error);
 }
 
-TEST(CannonDispatchTest, RunsSixteenNodesInEachOfElevenCommonPathSupersteps) {
+TEST(CannonDispatchTest, UsesThreePreparedBatchesPerLogicalSuperstep) {
     struct RecordingExecutor final : dmm::Executor {
         std::vector<std::size_t> batches;
         void for_each(std::size_t count, const std::function<void(std::size_t)>& task) override {
@@ -162,8 +162,10 @@ TEST(CannonDispatchTest, RunsSixteenNodesInEachOfElevenCommonPathSupersteps) {
     std::fill(a.values.begin(), a.values.end(), 1);
     std::fill(b.values.begin(), b.values.end(), 1);
     const dmm::Cannon cannon;
-    EXPECT_NO_THROW(dmm::validate(cannon.matmul(a, b, executor), constant_reference(4, 4)));
-    EXPECT_EQ(executor.batches, (std::vector<std::size_t>(11, 16)));
+    const auto result = cannon.run(a, b, executor);
+    EXPECT_NO_THROW(dmm::validate(result.product, constant_reference(4, 4)));
+    EXPECT_EQ(dmm::count(result.trace).supersteps, 11u);
+    EXPECT_EQ(executor.batches, (std::vector<std::size_t>(3 * 11, 16)));
 }
 
 class CannonTraceTest : public ::testing::TestWithParam<std::size_t> {};

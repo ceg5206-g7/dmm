@@ -131,8 +131,10 @@ def test_common_and_native_costs_have_explicit_conversion_boundary_and_hand_coun
     assert (end.supersteps, end.total_flops, end.critical_flops) == (11, 8192, 512)
     assert (end.total_words, end.critical_words, end.messages) == (2496, 164, 264)
     assert (body.supersteps, body.total_words, body.critical_words) == (5, 1920, 128)
-    assert (body.total_flops, body.messages, body.peak_words) == (
-        standalone.total_flops, standalone.messages, standalone.peak_words)
+    assert (body.total_flops, body.messages) == (standalone.total_flops, standalone.messages)
+    # The common plan retains conversion scratch/caches during its native body.
+    assert body.peak_words == 8 * 4**2
+    assert standalone.peak_words == 7 * 4**2
 
 
 @pytest.mark.parametrize("P", [1, 4, 16, 64, 256])

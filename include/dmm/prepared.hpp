@@ -3,6 +3,7 @@
 #include "dmm/bsp.hpp"
 #include <array>
 #include <mutex>
+#include <utility>
 
 namespace dmm {
 
@@ -75,6 +76,26 @@ private:
     bool sealed_ = false, executed_ = false;
 };
 
+// The ordinary API creates a temporary workspace; prepare keeps the same object
+// for repeated runs. Both execute and snapshot the identical algorithm plan.
+template <typename Prepared>
+Traced run_once(Prepared&& prepared, Executor& executor) {
+    Matrix<float> product(prepared.size());
+    prepared.run_into(product.values, executor);
+    return {std::move(product), prepared.trace()};
+}
+
+template <typename Prepared>
+struct PlannedAlgorithm {
+    std::size_t P = 16, c = 1;
+    Traced run(const Matrix<float>& a, const Matrix<float>& b, Executor& executor) const {
+        return run_once(Prepared(a, b, P, c), executor);
+    }
+    Matrix<float> matmul(const Matrix<float>& a, const Matrix<float>& b, Executor& executor) const {
+        return run(a, b, executor).product;
+    }
+};
+
 // Reference prepared adapter for Cannon. Input reset and host output assembly are
 // outside the timer; the measured interval is common row shards to common rows.
 class PreparedCannon {
@@ -84,8 +105,11 @@ public:
     Trace trace() const;
     std::size_t size() const noexcept { return a_.size; }
 private:
+    friend struct Cannon;
+    PreparedCannon(Matrix<float> a, Matrix<float> b, std::size_t P, std::size_t c, bool native_layout);
     Matrix<float> a_, b_;
     std::size_t P_, n_, q_;
+    bool native_layout_;
     PreparedBsp plan_;
     std::vector<std::size_t> left_, right_, result_, scratch_;
     mutable std::mutex mutex_;

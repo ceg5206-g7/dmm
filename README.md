@@ -134,6 +134,13 @@ methods. Each call borrows A/B and the executor until it returns, and returns
 an independent matrix owned by the caller. The same algorithm object can be
 reused with different inputs and executors; earlier results stay unchanged.
 
+Cannon's schedule is implemented once in `PreparedCannon` (`src/cannon.cpp`).
+Ordinary calls create a temporary workspace; `cannon.prepare(A,B,P=...,c=...)`
+retains the same workspace for repeated `run_into` calls. Full common-input
+traces, including payload peaks, match. New algorithms can implement one
+prepared class and use `PlannedAlgorithm<PreparedType>` for the ordinary C++ API;
+see the [Cannon contribution walkthrough](doc/docs/contribute.md).
+
 ```cpp
 dmm::Cannon algorithm{64, 1}; // P, c; default construction uses 16, 1.
 dmm::Matrix<float> C = algorithm.matmul(A, B, executor);

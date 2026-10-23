@@ -9,6 +9,8 @@
 #include <new>
 
 namespace {
+using PlannedCannon = dmm::PlannedAlgorithm<dmm::PreparedCannon>;
+static_assert(dmm::TracedAlgorithm<PlannedCannon>);
 std::atomic<bool> watch_allocations{false};
 std::atomic<std::size_t> allocations{0};
 }
@@ -30,7 +32,11 @@ TEST(PreparedTest, RepeatedPaddedProductsMatchReferenceTraceAndAllocateNothing) 
             a.values[i] = static_cast<float>(static_cast<int>(i % 13) - 6) / 32;
             b.values[i] = static_cast<float>(static_cast<int>(i % 7) - 3) / 16;
         }
-        const auto expected = dmm::Cannon{P}.run(a, b, *executor);
+        const auto expected = PlannedCannon{P, 1}.run(a, b, *executor);
+        const auto ordinary = dmm::Cannon{P}.run(a, b, *executor);
+        EXPECT_EQ(expected.product.values, ordinary.product.values);
+        EXPECT_EQ(dmm::count(expected.trace), dmm::count(ordinary.trace));
+        EXPECT_EQ((PlannedCannon{P, 1}.matmul(a, b, *executor).values), expected.product.values);
         dmm::PreparedCannon plan(a, b, P);
         std::vector<float> output(a.values.size());
         EXPECT_THROW(plan.trace(), std::logic_error);
@@ -46,15 +52,12 @@ TEST(PreparedTest, RepeatedPaddedProductsMatchReferenceTraceAndAllocateNothing) 
             const auto trace = plan.trace();
             EXPECT_NO_THROW(dmm::validate_coverage(trace));
             const auto actual = dmm::count(trace), original = dmm::count(expected.trace);
-            EXPECT_EQ(actual.total_flops, original.total_flops);
-            EXPECT_EQ(actual.critical_flops, original.critical_flops);
-            EXPECT_EQ(actual.total_words, original.total_words);
-            EXPECT_EQ(actual.critical_words, original.critical_words);
-            EXPECT_EQ(actual.supersteps, original.supersteps);
-            EXPECT_EQ(actual.messages, original.messages);
+            EXPECT_EQ(actual, original);
+            EXPECT_EQ(trace.peak_words, expected.trace.peak_words);
             for (std::size_t s = 0; s < trace.supersteps.size(); ++s) {
                 const auto& messages = trace.supersteps[s].messages;
                 const auto& originals = expected.trace.supersteps[s].messages;
+                EXPECT_EQ(trace.supersteps[s].peak_words, expected.trace.supersteps[s].peak_words);
                 EXPECT_EQ(messages.size(), originals.size());
                 for (const auto& m : messages) {
                     auto match = std::find_if(originals.begin(), originals.end(), [&](const auto& o) {

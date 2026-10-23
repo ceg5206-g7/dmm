@@ -65,3 +65,41 @@ def test_preparation_rejects_nonfinite_inputs():
     a[0, 0] = np.nan
     with pytest.raises(ValueError, match='finite'):
         prepare(a, a)
+
+
+def _trace_signature(trace):
+    coverage = trace.coverage
+    return (
+        trace.nodes, trace.original_size, trace.padded_size,
+        (coverage.row_parts, coverage.inner_parts, coverage.col_parts), tuple(trace.peak_words),
+        [(step.label, tuple(step.flops), tuple(step.peak_words),
+          [(m.source, m.destination, m.tag, m.words,
+            None if m.region is None else (m.region.row, m.region.col, m.region.rows, m.region.cols))
+           for m in step.messages],
+          [(p.node, p.product.i, p.product.k, p.product.j, p.product.m, p.product.n, p.product.inner)
+           for p in step.products]) for step in trace.supersteps],
+    )
+
+
+@pytest.mark.parametrize('P', [1, 4, 16])
+@pytest.mark.parametrize('workers', [0, 2])
+def test_ordinary_and_reused_plan_have_identical_executed_trace(P, workers):
+    from dmm.algorithms import cannon
+    rng = np.random.default_rng(5206)
+    a = rng.uniform(-1, 1, (17, 17)).astype(np.float32)
+    b = rng.uniform(-1, 1, (17, 17)).astype(np.float32)
+    reference = a.astype(np.float64) @ b.astype(np.float64)
+    prepared = cannon.prepare(a, b, P=P, c=1)
+    executor = ThreadExecutor(workers) if workers else SerialExecutor()
+    with executor:
+        expected, trace = cannon.matmul_traced(a, b, executor, P=P, c=1)
+        np.testing.assert_allclose(expected, reference, atol=1e-4, rtol=1e-3)
+        signature = _trace_signature(trace)
+        output = np.empty_like(a)
+        for _ in range(2):
+            prepared.run_into(output, executor)
+            np.testing.assert_array_equal(output, expected)
+            assert _trace_signature(prepared.trace()) == signature
+        repeated, repeated_trace = cannon.matmul_traced(a, b, executor, P=P, c=1)
+        np.testing.assert_array_equal(repeated, expected)
+        assert _trace_signature(repeated_trace) == signature
