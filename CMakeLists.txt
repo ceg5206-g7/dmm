@@ -11,7 +11,11 @@ execute_process(COMMAND "${Python_EXECUTABLE}" -m pybind11 --cmakedir
   OUTPUT_VARIABLE pybind11_DIR OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
 find_package(pybind11 CONFIG REQUIRED)
 
-add_library(dmm_core src/cannon.cpp src/execution.cpp)
+add_library(dmm_core
+  src/plan_build.cpp src/plan_execute.cpp src/matmul.cpp src/trace.cpp
+  src/redistribution.cpp src/collectives.cpp src/validation.cpp
+  src/execution.cpp src/calibration.cpp
+  src/algorithms/cannon.cpp src/algorithms/registry.cpp)
 target_include_directories(dmm_core PUBLIC include)
 target_link_libraries(dmm_core PUBLIC Threads::Threads)
 target_compile_options(dmm_core PRIVATE -Wall -Wextra -Wpedantic)
@@ -38,8 +42,17 @@ if(BUILD_TESTING)
   FetchContent_MakeAvailable(googletest)
 
   add_executable(dmm_tests
+    tests/cpp/test_plan.cpp
+    tests/cpp/test_matmul.cpp
+    tests/cpp/test_allocations.cpp
+    tests/cpp/test_collectives.cpp
+    tests/cpp/test_validation.cpp
+    tests/cpp/test_redistribution.cpp
+    tests/cpp/test_memory.cpp
+    tests/cpp/test_gemm.cpp
     tests/cpp/test_matrix.cpp
     tests/cpp/test_matrix_block_view.cpp
+    tests/cpp/test_trace.cpp
     tests/cpp/test_cannon.cpp
     tests/cpp/test_executor.cpp)
   target_link_libraries(dmm_tests PRIVATE dmm_core GTest::gtest_main)

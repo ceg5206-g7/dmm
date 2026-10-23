@@ -1,4 +1,4 @@
-#include "dmm/algorithm.hpp"
+#include "dmm/matrix.hpp"
 #include <gtest/gtest.h>
 #include <cstddef>
 #include <limits>

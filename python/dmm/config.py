@@ -1,13 +1,14 @@
 """Load and validate YAML dataset and benchmark configurations."""
 
-from dataclasses import MISSING, dataclass, fields
+from dataclasses import MISSING, dataclass, field, fields
 import os
+from math import isfinite
 from pathlib import Path
 
 import yaml
 import numpy as np
 
-ALGORITHMS = ("cannon", "fox", "strassen", "cw")
+LAYOUT_MODULES = {"ring": "ring", "cannon": "cannon", "2.5d": "two_point_five_d"}
 MODES = ("sequential", "threaded")
 
 
@@ -41,6 +42,35 @@ def validate_value_range(value_range) -> None:
         raise ValueError("value_range must contain two finite FP32 bounds with low <= high")
 
 
+def validate_case(case: dict) -> None:
+    """Validate the layout-specific logical grid without requiring its algorithm."""
+    from dmm import _native
+
+    if not isinstance(case, dict) or set(case) != {"layout", "P", "c"}:
+        raise ValueError("each case requires exactly these fields: layout, P, c")
+    if not isinstance(case["layout"], str) or case["layout"] not in LAYOUT_MODULES:
+        raise ValueError(f"case layout must be one of {tuple(LAYOUT_MODULES)}")
+    for name in ("P", "c"):
+        if type(case[name]) is not int or case[name] <= 0:
+            raise ValueError(f"case {name} must be a positive integer")
+    if case["layout"] != "2.5d" and case["c"] != 1:
+        raise ValueError(f"{case['layout']} requires c = 1")
+    if case["layout"] != "ring":
+        _native.grid_size(case["P"], case["c"])
+
+
+def validate_cases(cases) -> None:
+    if not isinstance(cases, list) or not cases:
+        raise ValueError("cases must be a non-empty list")
+    seen = set()
+    for case in cases:
+        validate_case(case)
+        key = (case["layout"], case["P"], case["c"])
+        if key in seen:
+            raise ValueError("cases must be unique")
+        seen.add(key)
+
+
 @dataclass
 class DatasetConfig:
     """Specify reproducible matrix generation in a new directory."""
@@ -60,15 +90,15 @@ class DatasetConfig:
 
 @dataclass
 class BenchmarkConfig:
-    """Describe the Cartesian product of algorithms, modes, groups and sizes."""
+    """Run each layout/P/c case across shared modes, groups and sizes."""
 
     data_dir: Path
     output: Path
-    algorithms: list[str]
+    cases: list[dict]
     modes: dict[str, dict]
     groups: list[int]
     sizes: list[int]
-    repeats: int = 1
+    repeats: int = 15
     warmups: int = 5
 
     def validate(self) -> None:
@@ -76,7 +106,7 @@ class BenchmarkConfig:
             raise ValueError("repeats must be a positive integer")
         if type(self.warmups) is not int or self.warmups < 0:
             raise ValueError("warmups must be a non-negative integer")
-        _selection("algorithms", self.algorithms, ALGORITHMS)
+        validate_cases(self.cases)
         _dimensions(self.groups, self.sizes)
         if any(left >= right for left, right in zip(self.sizes, self.sizes[1:])):
             raise ValueError("sizes must be in ascending order")
@@ -93,6 +123,66 @@ class BenchmarkConfig:
             if mode == "threaded":
                 limit = min(6, os.cpu_count() or 1)
                 _selection("threaded.workers", options["workers"], tuple(range(1, limit + 1)))
+
+
+@dataclass
+class ModelConfig:
+    """Execute each configuration once; sweep saved counts without rerunning matrices."""
+    data_dir: Path
+    output_dir: Path
+    cases: list[dict]
+    sizes: list[int]
+    group: int = 0
+    workers: int = 0
+    gammas: list[float] = field(default_factory=lambda: [1, 10, 100, 1000])
+    lambdas: list[float] = field(default_factory=lambda: [100, 10000])
+    budgets: list[float] = field(default_factory=lambda: [8, 32])
+
+    def validate(self) -> None:
+        validate_cases(self.cases)
+        _dimensions([self.group], self.sizes)
+        if self.sizes != sorted(self.sizes):
+            raise ValueError("sizes must be in ascending order")
+        if type(self.workers) is not int or not 0 <= self.workers <= (os.cpu_count() or 1):
+            raise ValueError("workers must be between zero and available logical CPU count")
+        for name, minimum in (("gammas", 0), ("lambdas", 0), ("budgets", 0)):
+            values = getattr(self, name)
+            if (not isinstance(values, list) or not values
+                    or any(type(v) not in (int, float) or not isfinite(v) or v < minimum
+                           or (name == "budgets" and v == 0) for v in values)
+                    or len(set(values)) != len(values)):
+                raise ValueError(f"{name} must contain unique finite non-negative values (budgets positive)")
+
+
+@dataclass
+class MeasurementConfig:
+    """Calibrate independently, then measure prepared cases against frozen parameters."""
+    data_dir: Path
+    output_dir: Path
+    cases: list[dict]
+    sizes: list[int]
+    group: int = 0
+    workers: int = 0
+    warmups: int = 5
+    repeats: int = 15
+
+    def validate(self) -> None:
+        validate_cases(self.cases)
+        _dimensions([self.group], self.sizes)
+        if self.sizes != sorted(self.sizes):
+            raise ValueError("sizes must be in ascending order")
+        if type(self.workers) is not int or not 0 <= self.workers <= (os.cpu_count() or 1):
+            raise ValueError("workers must be between zero and available logical CPU count")
+        if type(self.warmups) is not int or self.warmups < 0:
+            raise ValueError("warmups must be a non-negative integer")
+        if type(self.repeats) is not int or self.repeats < 1:
+            raise ValueError("repeats must be a positive integer")
+        H = self.workers or 1
+        if any(case["P"] > H for case in self.cases):
+            raise ValueError("measurement requires P <= H; use dmm model for P > H correctness/counting")
+        # Micro GEMMs are deliberately disjoint from held-out full matrix sizes.
+        if set(self.sizes) & {32, 64, 96}:
+            raise ValueError("sizes must be held out from calibration sizes 32/64/96")
 
 
 def _load_config(path, config_type, path_fields):
@@ -124,3 +214,13 @@ def load_benchmark_config(path: str | Path) -> BenchmarkConfig:
 def load_dataset_config(path: str | Path) -> DatasetConfig:
     """Load generation settings, resolving paths relative to the YAML file."""
     return _load_config(path, DatasetConfig, ("data_dir",))
+
+
+def load_model_config(path: str | Path) -> ModelConfig:
+    """Load a trace/model experiment with paths relative to its YAML file."""
+    return _load_config(path, ModelConfig, ("data_dir", "output_dir"))
+
+
+def load_measurement_config(path: str | Path) -> MeasurementConfig:
+    """Load a prepared measurement/independent calibration profile."""
+    return _load_config(path, MeasurementConfig, ("data_dir", "output_dir"))

@@ -2,7 +2,7 @@ import csv
 import json
 from pathlib import Path
 import shutil
-from statistics import fmean
+from statistics import median
 import subprocess
 import sys
 
@@ -91,8 +91,8 @@ def test_installed_command_generates_dataset_outside_project(tmp_path):
             np.testing.assert_array_equal(load_reference(root, group, size), a.astype(np.float64) @ b.astype(np.float64))
     bench_path = directory / "benchmark.yaml"
     bench_path.write_text(yaml.safe_dump({
-        "data_dir": "custom", "output": "results.csv", "algorithms": ["cannon"],
-        "modes": {"sequential": {}}, "groups": [5, 2], "sizes": [12, 16],
+        "data_dir": "custom", "output": "results.csv", "cases": [{"layout": "cannon", "P": 16, "c": 1}],
+        "modes": {"sequential": {}}, "groups": [5, 2], "sizes": [12, 16], "repeats": 1,
     }))
     result = subprocess.run(
         [executable, "bench", "--config", str(bench_path)],
@@ -112,7 +112,7 @@ def test_bench_arguments(tmp_path, monkeypatch, capsys, arguments, filename):
     config_path = tmp_path / filename
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(yaml.safe_dump({
-        "data_dir": "data", "output": "out.csv", "algorithms": ["cannon"],
+        "data_dir": "data", "output": "out.csv", "cases": [{"layout": "cannon", "P": 16, "c": 1}],
         "modes": {"sequential": {}}, "groups": [0, 1], "sizes": [16, 32],
     }))
     calls = []
@@ -132,7 +132,7 @@ def test_bench_arguments(tmp_path, monkeypatch, capsys, arguments, filename):
     ("modes: [", "Invalid YAML"),
     ("{}", "fields"),
     (yaml.safe_dump({
-        "data_dir": "missing", "output": "out.csv", "algorithms": ["cannon"],
+        "data_dir": "missing", "output": "out.csv", "cases": [{"layout": "cannon", "P": 16, "c": 1}],
         "modes": {"sequential": {}}, "groups": [0], "sizes": [16],
     }), "manifest.json"),
 ])
@@ -152,24 +152,25 @@ def test_bench_errors_are_reported_without_tracebacks(tmp_path, monkeypatch, cap
 
 
 @pytest.mark.parametrize("repeats", [None, 3])
-def test_installed_bench_command_outside_project(tmp_path, repeats):
+@pytest.mark.parametrize("node_counts", [(16,), (16, 64, 256)])
+def test_installed_bench_command_outside_project(tmp_path, repeats, node_counts):
     root = tmp_path / "experiment"
     generate_dataset(DatasetConfig(root / "data", 5206, [0], [16], [0, 255]))
     config_path = root / "run.yaml"
     settings = {
-        "data_dir": "data", "output": "out.csv", "algorithms": ["cannon"],
+        "data_dir": "data", "output": "out.csv", "cases": [dict(layout="cannon", P=P, c=1) for P in node_counts],
         "modes": {"sequential": {}, "threaded": {"workers": [1, 2]}},
         "groups": [0], "sizes": [16],
     }
     if repeats is not None:
         settings["repeats"] = repeats
     config_path.write_text(yaml.safe_dump(settings, sort_keys=False))
-    repeat_count = repeats or 1
+    repeat_count = repeats or 15
     executable = shutil.which("dmm", path=str(Path(sys.executable).parent))
     assert executable is not None
     result = subprocess.run([executable, "bench", "--config", str(config_path)],
                             cwd=tmp_path, capture_output=True, text=True, check=True)
-    assert f"Saved {3 * repeat_count} benchmark result(s)" in result.stdout
+    assert f"Saved {3 * len(node_counts) * repeat_count} benchmark result(s)" in result.stdout
     metadata = json.loads((root / "out.json").read_text())
     assert metadata["benchmark"]["output"] == str(root / "out.csv")
     assert metadata["benchmark"]["repeats"] == repeat_count
@@ -177,12 +178,12 @@ def test_installed_bench_command_outside_project(tmp_path, repeats):
     assert metadata["git"]["commit"]
     with (root / "out.csv").open(newline="") as handle:
         rows = list(csv.DictReader(handle))
-    assert [(r["mode"], r["workers"], int(r["repeat"])) for r in rows] == [
-        (mode, workers, repeat)
+    assert [(r["mode"], r["workers"], int(r["P"]), int(r["repeat"])) for r in rows] == [
+        (mode, workers, P, repeat)
         for mode, workers in [("sequential", ""), ("threaded", "1"), ("threaded", "2")]
-        for repeat in range(repeat_count)]
+        for P in node_counts for repeat in range(repeat_count)]
     for row in rows:
-        assert row["algorithm"] == "cannon"
+        assert row["layout"] == "cannon"
         assert (row["group"], row["pair"], row["size"]) == ("0", "0", "16")
         assert float(row["time_s"]) >= 0
     result = subprocess.run([executable, "analyze", "--input", str(root / "out.csv")],
@@ -191,15 +192,17 @@ def test_installed_bench_command_outside_project(tmp_path, repeats):
     assert f"Saved analysis to {analysis_dir}" in result.stdout
     with (analysis_dir / "summary.csv").open(newline="") as handle:
         summary = list(csv.DictReader(handle))
-    assert len(summary) == 3
-    baseline = fmean(float(row["time_s"]) for row in rows if row["mode"] == "sequential")
+    assert len(summary) == 3 * len(node_counts)
     for aggregated in summary:
+        baseline = median(float(row["time_s"]) for row in rows
+                         if row["mode"] == "sequential" and row["P"] == aggregated["P"])
         selected = [float(row["time_s"]) for row in rows
-                    if row["mode"] == aggregated["mode"] and row["workers"] == aggregated["workers"]]
+                    if row["mode"] == aggregated["mode"] and row["workers"] == aggregated["workers"]
+                    and row["P"] == aggregated["P"] and row["c"] == aggregated["c"]]
         assert aggregated["group_count"] == "1"
         assert aggregated["repeats"] == str(repeat_count)
-        assert float(aggregated["mean_time_s"]) == pytest.approx(fmean(selected))
-        assert float(aggregated["speedup"]) == pytest.approx(baseline / fmean(selected))
+        assert float(aggregated["median_time_s"]) == pytest.approx(median(selected))
+        assert float(aggregated["speedup"]) == pytest.approx(baseline / median(selected))
     for filename in ("time.png", "speedup.png"):
         assert (analysis_dir / filename).read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
 
@@ -208,15 +211,22 @@ def test_cli_rejects_unsupported_algorithm_sizes_before_creating_results(tmp_pat
     generate_dataset(DatasetConfig(tmp_path / "data", 5206, [0], [4, 7], [0, 255]))
     path = tmp_path / "run.yaml"
     path.write_text(yaml.safe_dump({
-        "data_dir": "data", "output": "results/invalid.csv", "algorithms": ["cannon"],
+        "data_dir": "data", "output": "results/invalid.csv", "cases": [{"layout": "cannon", "P": 16, "c": 1}],
         "modes": {"sequential": {}}, "groups": [0], "sizes": [4, 7],
     }))
+    from dmm.algorithms import cannon
+
+    def reject_seven(size, **options):
+        if size == 7:
+            raise ValueError("test size limit is 4")
+
+    monkeypatch.setattr(cannon, "validate_size", reject_seven)
     monkeypatch.setattr(sys, "argv", ["dmm", "bench", "--config", str(path)])
     with pytest.raises(SystemExit) as error:
         cli.main()
     assert error.value.code == 1
     captured = capsys.readouterr()
-    assert "cannon" in captured.err and "size 7" in captured.err and "divisible by 4" in captured.err
+    assert "cannon" in captured.err and "size 7" in captured.err and "test size limit" in captured.err
     assert "Traceback" not in captured.err and "Saved" not in captured.out
     assert not (tmp_path / "results").exists()
 

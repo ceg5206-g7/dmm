@@ -1,6 +1,7 @@
 data_dir: ../data_smoke
 output: ../results/benchmark_smoke.csv
-algorithms: [cannon]
+cases:
+  - {layout: cannon, P: 16, c: 1}
 modes:
   sequential: {}
   threaded:

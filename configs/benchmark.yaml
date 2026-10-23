@@ -1,11 +1,12 @@
 data_dir: ../data
 output: ../results/benchmark.csv
-algorithms: [cannon]
+cases:
+  - {layout: cannon, P: 16, c: 1}
 modes:
   sequential: {}
   threaded:
     workers: [1, 2]
 groups: [0, 1, 2]
 sizes: [16, 32, 64, 128, 256, 512, 1024, 2048]
-repeats: 3
+repeats: 15
 warmups: 5

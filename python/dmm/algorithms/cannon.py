@@ -1,22 +1,27 @@
-"""Cannon multiplication with a logical 4-by-4 block grid."""
+"""Cannon multiplication with a configurable logical square grid."""
 
 import numpy as np
 
-from dmm import _native
+from dmm import matmul as shared
+from dmm.bsp import Trace
 from dmm.execution import Executor
 
-GRID = 4
+
+def validate_size(size: int, *, P: int = 16, c: int = 1) -> None:
+    """Validate the grid and common zero-padding size."""
+    shared.validate_size(size, layout="cannon", P=P, c=c)
 
 
-def validate_size(size: int) -> None:
-    """Reject sizes that cannot form Cannon's fixed four-by-four block grid."""
-    if type(size) is not int or size <= 0:
-        raise ValueError("size must be a positive integer")
-    if size % GRID:
-        raise ValueError(f"Cannon matrix size must be divisible by {GRID}")
-
-
-
-def matmul(A: np.ndarray, B: np.ndarray, executor: Executor) -> np.ndarray:
+def matmul(A: np.ndarray, B: np.ndarray, executor: Executor, *, P: int = 16, c: int = 1) -> np.ndarray:
     """Multiply FP32 square matrices through the selected C++ executor."""
-    return _native.cannon(A, B, executor)
+    return shared.matmul(A, B, executor, layout="cannon", P=P, c=c)
+
+
+def matmul_traced(A: np.ndarray, B: np.ndarray, executor: Executor, *, P: int = 16, c: int = 1) -> tuple[np.ndarray, Trace]:
+    """Return the common row-to-row route and its executed trace."""
+    return shared.matmul_traced(A, B, executor, layout="cannon", P=P, c=c)
+
+
+def prepare(A: np.ndarray, B: np.ndarray, *, P: int = 16, c: int = 1):
+    """Prepare reusable storage/schedule; run_into measures common rows to rows."""
+    return shared.prepare(A, B, layout="cannon", P=P, c=c)

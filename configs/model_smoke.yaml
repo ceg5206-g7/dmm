@@ -1,0 +1,11 @@
+data_dir: ../data_smoke
+output_dir: ../results/model_smoke
+cases:
+  - {layout: cannon, P: 4, c: 1}
+  - {layout: cannon, P: 16, c: 1}
+sizes: [4, 12]
+group: 0
+workers: 0
+gammas: [1, 10]
+lambdas: [100]
+budgets: [8, 32]

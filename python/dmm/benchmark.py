@@ -6,6 +6,7 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import asdict
 from datetime import datetime, timezone
 from importlib import import_module
+from functools import partial
 from itertools import product
 import json
 from math import isfinite
@@ -18,26 +19,16 @@ from time import get_clock_info, perf_counter
 import numpy as np
 
 from dmm import _native
-from dmm.config import BenchmarkConfig
+from dmm.config import BenchmarkConfig, LAYOUT_MODULES
 from dmm.datasets import load_manifest, load_pair, load_reference
 from dmm.execution import Executor, SerialExecutor, ThreadExecutor
 
-CSV_FIELDS = ("algorithm", "mode", "workers", "group", "pair", "size", "repeat", "time_s",
+CSV_FIELDS = ("layout", "P", "c", "mode", "workers", "group", "pair", "size", "repeat", "time_s",
               "max_abs_error", "frobenius_relative_error")
 
 
-def save_run_metadata(config: BenchmarkConfig) -> Path:
-    """Save an experiment snapshot beside its CSV without replacing any file."""
-    config.validate()
-    output = Path(config.output).resolve()
-    if output.suffix.lower() == ".json":
-        raise ValueError("Benchmark output must have a different filename from its .json metadata")
-    metadata_path = output.with_suffix(".json")
-    settings = asdict(config)
-    settings["data_dir"] = str(Path(config.data_dir).resolve())
-    settings["output"] = str(output)
-    manifest = json.loads((Path(config.data_dir) / "manifest.json").read_text(encoding="utf-8"))
-
+def source_revision() -> dict:
+    """Record the source checkout revision, independently of the working directory."""
     git = {"commit": None, "dirty": None}
     source_root = Path(__file__).resolve().parents[2]
     try:
@@ -52,6 +43,23 @@ def save_run_metadata(config: BenchmarkConfig) -> Path:
         git = {"commit": commit, "dirty": bool(status)}
     except (OSError, subprocess.SubprocessError):
         pass
+
+    return git
+
+
+def save_run_metadata(config: BenchmarkConfig) -> Path:
+    """Save an experiment snapshot beside its CSV without replacing any file."""
+    config.validate()
+    output = Path(config.output).resolve()
+    if output.suffix.lower() == ".json":
+        raise ValueError("Benchmark output must have a different filename from its .json metadata")
+    metadata_path = output.with_suffix(".json")
+    settings = asdict(config)
+    settings["data_dir"] = str(Path(config.data_dir).resolve())
+    settings["output"] = str(output)
+    manifest = json.loads((Path(config.data_dir) / "manifest.json").read_text(encoding="utf-8"))
+
+    git = source_revision()
 
     metadata = {
         "started_at": datetime.now(timezone.utc).isoformat(),
@@ -70,10 +78,12 @@ def save_run_metadata(config: BenchmarkConfig) -> Path:
         "git": git,
         "native": {
             "backend": "pybind11", "compiler": _native.compiler, "build_type": _native.build_type,
-            "execution": "fixed 4x4 Cannon; 16 full-tile tasks; no communication simulation",
+            "execution": "Per-case logical grids; BSP supersteps with copied messages",
             "input_dtype": "float32", "reference_dtype": "float64",
             "timer": {"name": "time.perf_counter", **vars(get_clock_info("perf_counter"))},
             "timing": "algorithm call including input/output copies; excludes worker startup and validation",
+            "statistics": {"center": "median of group medians",
+                           "spread": "median of group IQRs; linearly interpolated quartiles"},
         },
     }
     contents = json.dumps(metadata, indent=2) + "\n"
@@ -132,20 +142,22 @@ def _validate_product(C: np.ndarray, reference: np.ndarray) -> dict:
 def run_benchmark(config: BenchmarkConfig) -> int:
     """Run all configured combinations, reusing a pool for each worker count."""
     config.validate()
-    algorithms = {}
-    for name in config.algorithms:
+    algorithms = []
+    for case in config.cases:
+        name = case["layout"]
+        module_name = LAYOUT_MODULES[name]
         try:
-            algorithm = import_module(f"dmm.algorithms.{name}")
+            algorithm = import_module(f"dmm.algorithms.{module_name}")
         except ModuleNotFoundError as error:
-            if error.name != f"dmm.algorithms.{name}":
+            if error.name != f"dmm.algorithms.{module_name}":
                 raise
             raise ValueError(f"Algorithm {name!r} is not implemented") from error
         for size in config.sizes:
             try:
-                algorithm.validate_size(size)
+                algorithm.validate_size(size, P=case["P"], c=case["c"])
             except ValueError as error:
                 raise ValueError(f"Algorithm {name!r} does not support size {size}: {error}") from error
-        algorithms[name] = algorithm.matmul
+        algorithms.append((case, partial(algorithm.matmul, P=case["P"], c=case["c"])))
 
     dataset = load_manifest(config.data_dir)
     for name in ("groups", "sizes"):
@@ -164,8 +176,8 @@ def run_benchmark(config: BenchmarkConfig) -> int:
         def run_with_executor(executor: Executor, mode: str, workers: int | None = None) -> int:
             completed = 0
             with executor:
-                for (algorithm, matmul), group_id, size in product(
-                    algorithms.items(), config.groups, config.sizes,
+                for (case, matmul), group_id, size in product(
+                    algorithms, config.groups, config.sizes,
                 ):
                     A, B = load_pair(config.data_dir, group_id, size)
                     reference = load_reference(config.data_dir, group_id, size)
@@ -179,7 +191,7 @@ def run_benchmark(config: BenchmarkConfig) -> int:
                             raise ValueError("measured time must be positive and finite")
                         errors = _validate_product(C, reference)
                         write_result({
-                            "algorithm": algorithm,
+                            **case,
                             "mode": mode,
                             "workers": workers,
                             "group": group_id,
