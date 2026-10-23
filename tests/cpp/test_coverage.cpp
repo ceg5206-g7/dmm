@@ -36,31 +36,29 @@ TEST(CoverageTest, CannonExecutesEveryTripleOnceAndIndependentMutationsFail) {
 
 TEST(CoverageTest, RectangularRingStyleProductsUseSameKernelHookAndValidator) {
     dmm::ThreadExecutor executor(2);
-    dmm::Bsp machine(2);
-    auto a = machine.buffers(4), b = machine.buffers(8), c = machine.buffers(8);
-    for (std::size_t id = 0; id < 2; ++id) { a[id].assign(4, 1); b[id].assign(8, 1); }
-    for (std::size_t k = 0; k < 2; ++k)
-        machine.superstep("multiply", executor, [&](dmm::Node& node) {
-            const auto id = node.id();
-            node.multiply_add({id, k, 0, 2, 4, 2}, a[id], 2, b[id], 4, c[id], 4);
-        });
-    auto trace = machine.finish();
-    trace.padded_size = 4; trace.coverage = {2, 2, 1};
-    EXPECT_NO_THROW(dmm::validate_coverage(trace));
-    EXPECT_EQ(dmm::count(trace).total_flops, 128u);
-    for (const auto& values : c) for (float value : values) EXPECT_EQ(value, 4);
+    dmm::BspPlan plan(2);
+    std::vector<std::size_t> a,b,c;
+    for (std::size_t id=0; id<2; ++id) {
+        a.push_back(plan.allocate(id,4)); b.push_back(plan.allocate(id,8)); c.push_back(plan.allocate(id,8));
+        std::fill(plan.buffer(a[id]).begin(),plan.buffer(a[id]).end(),1.f);
+        std::fill(plan.buffer(b[id]).begin(),plan.buffer(b[id]).end(),1.f);
+    }
+    for (std::size_t k=0; k<2; ++k) {
+        auto step=plan.step("multiply");
+        for (std::size_t id=0; id<2; ++id)
+            plan.multiply_add(step,id,{id,k,0,2,4,2},{a[id],0,2},{b[id],0,4},{c[id],0,4});
+    }
+    plan.seal(4,4,{2,2,1}); plan.execute(executor);
+    EXPECT_NO_THROW(dmm::validate_coverage(plan.trace()));
+    EXPECT_EQ(dmm::count(plan.trace()).total_flops,128u);
+    for (auto id:c) for (auto value:plan.buffer(id)) EXPECT_EQ(value,4);
 }
 
-TEST(CoverageTest, FailedKernelCallDoesNotRecordExecutedMultiplication) {
-    dmm::SerialExecutor executor;
-    dmm::Bsp machine(1);
-    auto a = machine.buffer(0, 1), c = machine.buffer(0, 1);
-    EXPECT_THROW(machine.superstep("bad", executor, [&](dmm::Node& node) {
-        node.multiply_add({0, 0, 0, 2, 2, 2}, a, 2, a, 2, c, 2);
-    }), std::invalid_argument);
-    machine.superstep("recover", executor, [&](dmm::Node&) {});
-    auto trace = machine.finish();
-    ASSERT_EQ(trace.supersteps.size(), 1u);
-    EXPECT_TRUE(trace.supersteps[0].products.empty());
-    EXPECT_EQ(trace.supersteps[0].flops[0], 0u);
+TEST(CoverageTest, RejectedKernelCallDoesNotEnterTheExecutedTrace) {
+    dmm::BspPlan plan(1);
+    auto a=plan.allocate(0,1), c=plan.allocate(0,1);
+    auto step=plan.step("multiply");
+    EXPECT_THROW(plan.multiply_add(step,0,{0,0,0,2,2,2},{a,0,2},{a,0,2},{c,0,2}),std::invalid_argument);
+    plan.seal(1,1,{1,1,1}); dmm::SerialExecutor executor; plan.execute(executor);
+    EXPECT_TRUE(plan.trace().supersteps[0].products.empty());
 }

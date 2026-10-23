@@ -1,5 +1,5 @@
 #include "dmm/cannon.hpp"
-#include "dmm/prepared.hpp"
+#include "dmm/calibration.hpp"
 #include "dmm/sharding.hpp"
 #include "dmm/coverage.hpp"
 #include <pybind11/numpy.h>
@@ -46,36 +46,38 @@ std::size_t positive_integer(const py::object& value, const char* name) {
     return number;
 }
 
-std::pair<py::array_t<float>, dmm::Trace> cannon_traced(const Array& a, const Array& b, dmm::Executor& executor,
-        const py::object& P, const py::object& c, bool native_layout) {
-    const dmm::Cannon algorithm{positive_integer(P, "P"), positive_integer(c, "c")};
-    dmm::grid_size(algorithm.P, algorithm.c);
-    if (algorithm.c != 1) throw std::invalid_argument("Cannon requires c = 1");
-    auto left = copy_input(a);
-    auto right = copy_input(b);
-    const auto n = static_cast<py::ssize_t>(left.size);
+dmm::PlanBuilder builder(const std::string& layout) {
+    if (layout == "cannon") return dmm::build_cannon;
+    if (layout == "ring" || layout == "2.5d")
+        throw std::invalid_argument("Layout " + layout + " is not implemented");
+    throw std::invalid_argument("unknown layout: " + layout);
+}
+
+std::unique_ptr<dmm::PreparedMatmul> prepare(const Array& a, const Array& b,
+        const std::string& layout, const py::object& P, const py::object& c) {
+    const auto build = builder(layout);
+    const auto nodes = positive_integer(P, "P"), copies = positive_integer(c, "c");
+    return std::make_unique<dmm::PreparedMatmul>(copy_input(a), copy_input(b), nodes, copies, build);
+}
+
+std::pair<py::array_t<float>, dmm::Trace> matmul_traced(const Array& a, const Array& b, dmm::Executor& executor,
+        const std::string& layout, const py::object& P, const py::object& c) {
+    auto job = prepare(a, b, layout, P, c);
+    const auto n = static_cast<py::ssize_t>(job->size());
     py::array_t<float> output({n, n});
     auto* destination = output.mutable_data();
     dmm::Trace trace;
     {
         py::gil_scoped_release release;
-        auto result = native_layout ? algorithm.run_native(left, right, executor) : algorithm.run(left, right, executor);
-        const auto& values = result.product.values;
-        std::copy(values.begin(), values.end(), destination);
-        trace = std::move(result.trace);
+        job->run_into({destination, static_cast<std::size_t>(n * n)}, executor);
+        trace = job->trace();
     }
     return {std::move(output), std::move(trace)};
-}
-
-py::array_t<float> cannon(const Array& a, const Array& b, dmm::Executor& executor,
-        const py::object& P, const py::object& c) {
-    return cannon_traced(a, b, executor, P, c, false).first;
 }
 } // namespace
 
 PYBIND11_MODULE(_native, module) {
-    module.doc() = "Configurable square-grid Cannon with FP32 inputs, reusable workers and BSP traces.";
-    module.attr("GRID") = dmm::GRID;
+    module.doc() = "Matrix multiplication plans with FP32 inputs, reusable workers and BSP traces.";
     module.def("grid_size", [](const py::object& P, const py::object& c) {
         return dmm::grid_size(positive_integer(P, "P"), positive_integer(c, "c"));
     }, py::arg("P"), py::arg("c") = 1);
@@ -113,12 +115,8 @@ PYBIND11_MODULE(_native, module) {
         .def_readonly("end_to_end", &dmm::RunTimings::end_to_end)
         .def_readonly("phases", &dmm::RunTimings::phases);
     module.attr("phase_names") = dmm::PHASE_NAMES;
-    py::class_<dmm::PreparedCannon>(module, "PreparedCannon")
-        .def(py::init([](const Array& a, const Array& b, const py::object& P, const py::object& c) {
-            return std::make_unique<dmm::PreparedCannon>(copy_input(a), copy_input(b),
-                positive_integer(P, "P"), positive_integer(c, "c"));
-        }), py::arg("a").noconvert(), py::arg("b").noconvert(), py::kw_only(), py::arg("P") = 16, py::arg("c") = 1)
-        .def("run_into", [](dmm::PreparedCannon& plan, py::array_t<float, py::array::c_style> output, dmm::Executor& executor) {
+    py::class_<dmm::PreparedMatmul>(module, "PreparedMatmul")
+        .def("run_into", [](dmm::PreparedMatmul& plan, py::array_t<float, py::array::c_style> output, dmm::Executor& executor) {
             if (output.ndim() != 2 || output.shape(0) != static_cast<py::ssize_t>(plan.size()) ||
                 output.shape(1) != static_cast<py::ssize_t>(plan.size())) throw std::invalid_argument("prepared output must match input shape");
             auto* data = output.mutable_data();
@@ -126,7 +124,10 @@ PYBIND11_MODULE(_native, module) {
             py::gil_scoped_release release;
             return plan.run_into({data, count}, executor);
         }, py::arg("output").noconvert(), py::arg("executor"))
-        .def("trace", &dmm::PreparedCannon::trace, py::call_guard<py::gil_scoped_release>());
+        .def("trace", &dmm::PreparedMatmul::trace, py::call_guard<py::gil_scoped_release>());
+    module.def("prepare", &prepare,
+        py::arg("a").noconvert(), py::arg("b").noconvert(), py::kw_only(),
+        py::arg("layout") = "cannon", py::arg("P") = 16, py::arg("c") = 1);
     module.def("microbenchmark", [](const std::string& kind, const py::object& size,
                const py::object& iterations, const py::object& nodes, dmm::Executor& executor) {
         const auto s = positive_integer(size, "size"), it = positive_integer(iterations, "iterations"),
@@ -134,12 +135,14 @@ PYBIND11_MODULE(_native, module) {
         py::gil_scoped_release release;
         return dmm::microbenchmark(kind, s, it, P, executor);
     }, py::arg("kind"), py::arg("size"), py::arg("iterations"), py::arg("nodes"), py::arg("executor"));
-    module.def("cannon", &cannon,
-       py::arg("a").noconvert(), py::arg("b").noconvert(),
-       py::arg("executor"), py::kw_only(), py::arg("P") = 16, py::arg("c") = 1);
-    module.def("cannon_traced", &cannon_traced,
-       py::arg("a").noconvert(), py::arg("b").noconvert(),
-       py::arg("executor"), py::kw_only(), py::arg("P") = 16, py::arg("c") = 1, py::arg("native_layout") = false);
+    module.def("matmul", [](const Array& a, const Array& b, dmm::Executor& executor,
+               const std::string& layout, const py::object& P, const py::object& c) {
+        return matmul_traced(a, b, executor, layout, P, c).first;
+    }, py::arg("a").noconvert(), py::arg("b").noconvert(), py::arg("executor"), py::kw_only(),
+       py::arg("layout") = "cannon", py::arg("P") = 16, py::arg("c") = 1);
+    module.def("matmul_traced", &matmul_traced,
+       py::arg("a").noconvert(), py::arg("b").noconvert(), py::arg("executor"), py::kw_only(),
+       py::arg("layout") = "cannon", py::arg("P") = 16, py::arg("c") = 1);
 
     py::class_<dmm::ElementRegion>(module, "ElementRegion")
         .def_readonly("row", &dmm::ElementRegion::row)

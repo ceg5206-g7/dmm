@@ -80,7 +80,7 @@ def test_benchmark_accepts_fortran_order_dataset(dataset, tmp_path):
 ])
 def test_binding_rejects_invalid_arrays(array):
     with pytest.raises((ValueError, TypeError)):
-        _native.cannon(array, np.eye(4, dtype=np.float32), make_executor())
+        _native.matmul(array, np.eye(4, dtype=np.float32), make_executor())
 
 
 @pytest.mark.parametrize("workers", [-1, 10**6])
@@ -95,22 +95,23 @@ def test_binding_reuses_executor_with_independent_outputs(workers):
     b = a.T.copy()
     executor = make_executor(workers)
     expected = a.astype(np.float64) @ b.astype(np.float64)
-    first = _native.cannon(a, b, executor)
+    first = _native.matmul(a, b, executor)
     first[0, 0] = -999
-    np.testing.assert_allclose(_native.cannon(a, b, executor), expected)
+    np.testing.assert_allclose(_native.matmul(a, b, executor), expected)
     a.fill(0)
-    np.testing.assert_array_equal(_native.cannon(a, b, executor), np.zeros((4, 4)))
+    np.testing.assert_array_equal(_native.matmul(a, b, executor), np.zeros((4, 4)))
     del executor
     assert first[0, 0] == -999
 
 
 @pytest.mark.parametrize("workers", [0, 1, 2])
 def test_binding_preserves_matmul_tile_order(workers):
-    a = np.tile(np.array([1e8, 1, -1e8, 1], dtype=np.float32), (4, 1))
-    b = np.ones((4, 4), dtype=np.float32)
-    expected = [[1, 0, 1, 0], [0, 1, 0, 1], [1, 0, 1, 0], [0, 1, 0, 1]]
-    assert _native.GRID == 4
-    np.testing.assert_array_equal(_native.cannon_traced(a, b, make_executor(workers), native_layout=True)[0], expected)
+    a = np.zeros((16, 16), dtype=np.float32)
+    a[:, ::4] = [1e8, 1, -1e8, 1]
+    b = np.ones((16, 16), dtype=np.float32)
+    i, j = np.indices((16, 16))
+    expected = ((i // 4 + j // 4) % 2 == 0).astype(np.float32)
+    np.testing.assert_array_equal(_native.matmul(a, b, make_executor(workers)), expected)
 
 
 @pytest.mark.parametrize("workers", [0, 1, 2])
@@ -120,7 +121,7 @@ def test_binding_supports_readonly_noncontiguous_inputs(workers):
     a.flags.writeable = False
     b.flags.writeable = False
     a_before, b_before = a.copy(), b.copy()
-    np.testing.assert_allclose(_native.cannon(a, b, make_executor(workers)),
+    np.testing.assert_allclose(_native.matmul(a, b, make_executor(workers)),
                                a.astype(np.float64) @ b.astype(np.float64))
     np.testing.assert_array_equal(a, a_before)
     np.testing.assert_array_equal(b, b_before)
@@ -217,6 +218,6 @@ def test_concurrent_calls_share_one_native_executor_safely():
     a.flags.writeable = False
     executor = make_executor(2)
     with ThreadPoolExecutor(2) as callers:
-        outputs = list(callers.map(lambda _: _native.cannon(a, a, executor), range(8)))
+        outputs = list(callers.map(lambda _: _native.matmul(a, a, executor), range(8)))
     for output in outputs:
         np.testing.assert_allclose(output, a.astype(np.float64) @ a.astype(np.float64))

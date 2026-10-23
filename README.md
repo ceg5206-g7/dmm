@@ -114,7 +114,7 @@ The `matmul(A, B, executor, *, P=16, c=1)` interface preserves existing calls.
 `validate_size` and `matmul_traced` accept the same keyword options.
 `dmm.execution` directly re-exports the bound C++ classes; it defines no Python
 executor classes. The Python executor object is the bound C++ executor itself.
-The thin algorithm module calls `_native.cannon(A, B, executor)`;
+The thin algorithm module calls the common `dmm.matmul` entry points;
 C++ owns input copies, node-local blocks, messages, scalar multiplication and assembly.
 Python retains configuration, datasets, dispatch, measurement, validation and
 analysis. There is no Python process pool: positive worker counts use
@@ -134,12 +134,12 @@ methods. Each call borrows A/B and the executor until it returns, and returns
 an independent matrix owned by the caller. The same algorithm object can be
 reused with different inputs and executors; earlier results stay unchanged.
 
-Cannon's schedule is implemented once in `PreparedCannon` (`src/cannon.cpp`).
-Ordinary calls create a temporary workspace; `cannon.prepare(A,B,P=...,c=...)`
-retains the same workspace for repeated `run_into` calls. Full common-input
-traces, including payload peaks, match. New algorithms can implement one
-prepared class and use `PlannedAlgorithm<PreparedType>` for the ordinary C++ API;
-see the [Cannon contribution walkthrough](doc/docs/contribute.md).
+Cannon's schedule is the plain `build_cannon(BspPlan&,MatmulLayout&)` function
+in `src/cannon.cpp`. The shared `PreparedMatmul` owns inputs, padding,
+reset/execute/gather, locks and timing. Ordinary calls create it temporarily;
+`cannon.prepare` retains it. New layouts supply only a builder and thin Python
+forwarders, with no per-algorithm workspace class or second runtime. See the
+[Cannon contribution walkthrough](doc/docs/contribute.md).
 
 ```cpp
 dmm::Cannon algorithm{64, 1}; // P, c; default construction uses 16, 1.
@@ -147,7 +147,7 @@ dmm::Matrix<float> C = algorithm.matmul(A, B, executor);
 ```
 
 pybind11 exposes `Executor`, `SerialExecutor` and `ThreadExecutor` directly.
-The `_native.cannon` function handles NumPy conversion, GIL release and the
+The `_native.matmul` function handles NumPy conversion, GIL release and the
 algorithm call. Thread pools start at construction and close on context exit
 or explicit `close()`. A closed pool cannot be reopened; create another executor
 for another context. Destruction also closes any remaining workers.
@@ -226,51 +226,26 @@ A and B from row shards (two supersteps each) and converts C back afterwards
    `A_{i,k} B_{k,j}` with `k = (i + j + round) % q` using the shared blocked `gemm_add` kernel (tile 32),
    and, in the first q−1 rounds, sends A to its left and B to its upper neighbour.
 3. The common route converts C tiles back to row shards, then the host adapter
-   gathers/crops the result. Native-layout test adapters assemble directly.
+   gathers/crops the result. All routes use this same output adapter.
 
 Accumulation order is fixed for a given padded layout; padding can change the
 block schedule. Results are verified against the independent FP64 reference.
 
 ## Communication model
 
-`include/dmm/bsp.hpp` is algorithm-independent; 1D ring and 2.5D can use it
-unchanged. `Bsp(P).superstep(label, executor, body)` runs `body(Node&)` once per
-logical node through the executor, then delivers messages. Inside `body` a node may:
+`BspPlan` in `include/dmm/bsp_plan.hpp` is the only execution engine. Layout
+builders declare node-owned buffers and `zero/copy/receive/multiply_add/send`
+operations per superstep. `seal` validates the schedule and prepares message
+slots. `execute` interprets the operation lists through the borrowed executor;
+it does not generate machine code. Each step has copy, kernel and send batches,
+but the model counts one logical superstep. Messages must be consumed exactly
+once in the immediately following step; all cross-node data is explicitly copied.
 
-- `send(destination, tag, span)`: copy its payload into a message;
-- `receive(source, tag, words)`: take a message delivered at the end of the
-  previous superstep, checking its length;
-- `compute(flops)`: record local work (a multiply-add counts as 2 FLOPs).
-
-Node code reads and writes only its own storage; data crosses nodes only through
-messages. Each superstep checks destinations, rejects self-sends and duplicate
-`(source, destination, tag)` messages, and requires every delivered message to
-be received in the next superstep; `finish()` checks the last one and returns
-the `Trace` (per-superstep label, per-node FLOPs and every message's source,
-destination, tag and word count).
-
-`count` turns a trace or a single superstep into `Counts`. With
-`h(r, s) = max(words sent, words received)`, `critical_words = Σ_s max_r h(r, s)`,
-`critical_flops = Σ_s max_r F(r, s)` and
-
-```text
-T_BSP = w · critical_flops + g · critical_words + l · supersteps
-```
-
-which `bsp_cost(counts, w=, g=, l=)` evaluates. No sleep or busy-wait injects network
-time: wall-clock measures only the real computation and copies, while `g` and `l`
-are model parameters, so a γ/λ sweep recomputes costs from saved counts.
-
-For the native body at P=16 and block size `b = n_padded / 4`, Cannon's counts are
-
-| Superstep | Messages | Total words | max h | max F |
-| --- | --- | --- | --- | --- |
-| skew | 24 | 24b² | 2b² | 0 |
-| multiply 0–2 | 32 each | 32b² each | 2b² | 2b³ |
-| multiply 3 | 0 | 0 | 0 | 2b³ |
-| **total** | 120 | 120b² | 8b² | 8b³ (2n³ total FLOPs) |
-
-GoogleTest and pytest check these hand counts and individual message routes.
+`include/dmm/bsp.hpp` holds trace/count types and model cost functions. Critical
+counts sum per-step maxima, with h=max(sent,received). The cost is
+T=w*W_crit+g*C_crit+l*S. No sleep emulates a network; saved traces support
+parameter sweeps without repeating matrix arithmetic. See
+[system design](doc/docs/design.md) for the lifecycle and measurement boundaries.
 
 ## Timing, correctness and results
 
@@ -411,7 +386,7 @@ messages and reduction FLOPs are recorded by BSP, including the final receive
 step. For each group, rank r has parent (r-1)/2. Singleton groups are no-ops.
 
 Node payload ownership uses move-only `Buffer` from `include/dmm/memory.hpp`.
-Allocate through `Bsp::buffer`, `Bsp::buffers` or `Node::buffer` so local tiles,
+Allocate through `BspPlan::allocate` so local tiles,
 packing buffers, replicas and messages share one per-node memory ledger.
 `Trace.peak_words` and each superstep contain per-node peaks; `Counts.peak_words`
 is their maximum, and count aggregation takes max rather than sum for memory.
@@ -424,16 +399,16 @@ Common row shards and base-layer block conversion are provided by
 `count_native(trace)` excludes exactly input/output conversion from the full
 trace, keeping the same actual padded dimensions. At n=16, P=16, the full path
 has S=11, F_total=8192, W_crit=512, C_total=2496 and C_crit=164; the native body
-has S=5, C_total=1920 and C_crit=128. `matmul_traced(..., native_layout=True)` is
-an explicit unpadded native-input test adapter requiring n divisible by sqrt(P).
+has S=5, C_total=1920 and C_crit=128. Both metrics come from the same execution;
+there is no standalone native-input mode.
 
 The versioned [project proposal](doc/docs/proposal.pdf) now specifies C++20
 in both its platform contract and build deliverables, matching CMake and the
 public concept/span interfaces. Its remaining acceptance conditions still apply.
 
-`Node::multiply_add` couples the shared kernel call with actual (i,k,j), GEMM
-shape and FLOP records. Set `Trace.coverage` to its uniform block partition
-and run `dmm.bsp.validate_coverage(trace)` to reject missing/duplicate blocks,
+`BspPlan::multiply_add` couples the shared kernel call with actual (i,k,j), GEMM
+shape and FLOP records. The builder sets `layout.coverage` to its block partition
+and callers run `dmm.bsp.validate_coverage(trace)` to reject missing/duplicate blocks,
 wrong shapes and inconsistent node work. The independent FP64 oracle remains
 necessary; trace metadata is not included in payload-memory budgets.
 

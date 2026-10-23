@@ -2,11 +2,9 @@
 
 #include "dmm/algorithm.hpp"
 #include "dmm/execution.hpp"
-#include "dmm/memory.hpp"
 #include <concepts>
 #include <cstddef>
 #include <functional>
-#include <map>
 #include <optional>
 #include <span>
 #include <string>
@@ -77,68 +75,6 @@ struct CostParameters {
 
 // T = w * critical_flops + g * critical_words + l * supersteps.
 double bsp_cost(const Counts& counts, const CostParameters& parameters);
-
-namespace detail {
-struct Message {
-    std::size_t destination, tag;
-    Buffer payload;
-    std::optional<ElementRegion> region;
-};
-
-struct NodeState {
-    std::vector<Message> outbox;
-    std::map<std::pair<std::size_t, std::size_t>, Buffer> inbox; // (source, tag)
-    std::vector<ProductRecord> products{};
-    std::size_t flops = 0;
-    std::shared_ptr<MemoryLedger> memory = std::make_shared<MemoryLedger>();
-};
-} // namespace detail
-
-// One logical node's handle for one superstep; only that node's task uses it.
-class Node {
-public:
-    std::size_t id() const noexcept { return id_; }
-    std::size_t nodes() const noexcept { return nodes_; }
-    // Copies the payload; the destination receives it in the next superstep.
-    void send(std::size_t destination, std::size_t tag, std::span<const float> payload,
-              std::optional<ElementRegion> region = std::nullopt);
-    // Moves out a message delivered at the end of the previous superstep.
-    Buffer receive(std::size_t source, std::size_t tag, std::size_t words);
-    Buffer buffer(std::size_t words = 0) const { return Buffer(state_.memory, std::vector<float>(words)); }
-    void multiply_add(const ProductRegion& product,
-                      std::span<const float> a, std::size_t lda,
-                      std::span<const float> b, std::size_t ldb,
-                      std::span<float> c, std::size_t ldc);
-    void compute(std::size_t flops) noexcept { state_.flops += flops; }
-
-private:
-    friend class Bsp;
-    Node(std::size_t id, std::size_t nodes, detail::NodeState& state) noexcept
-        : id_(id), nodes_(nodes), state_(state) {}
-    std::size_t id_, nodes_;
-    detail::NodeState& state_;
-};
-
-// Logical nodes with private mailboxes. Communication is copied and counted,
-// never delayed; costs come from the trace and CostParameters afterwards.
-class Bsp {
-public:
-    explicit Bsp(std::size_t nodes);
-    std::size_t nodes() const noexcept { return states_.size(); }
-    Buffer buffer(std::size_t node, std::size_t words = 0) const;
-    NodeBuffers buffers(std::size_t words = 0) const;
-    std::size_t live_words(std::size_t node) const;
-    bool owns(std::size_t node, const Buffer& buffer) const;
-    // Runs body once per node, then delivers the sent messages. Every delivered
-    // message must be received during the following superstep.
-    void superstep(std::string label, Executor& executor, const std::function<void(Node&)>& body);
-    // Checks that the last delivered messages were received and returns the trace.
-    Trace finish();
-
-private:
-    std::vector<detail::NodeState> states_;
-    Trace trace_;
-};
 
 struct Traced {
     Matrix<float> product;

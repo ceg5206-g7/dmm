@@ -11,7 +11,7 @@ execute_process(COMMAND "${Python_EXECUTABLE}" -m pybind11 --cmakedir
   OUTPUT_VARIABLE pybind11_DIR OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
 find_package(pybind11 CONFIG REQUIRED)
 
-add_library(dmm_core src/prepared.cpp src/coverage.cpp src/sharding.cpp src/collectives.cpp src/bsp.cpp src/cannon.cpp src/execution.cpp)
+add_library(dmm_core src/bsp_plan.cpp src/matmul.cpp src/calibration.cpp src/coverage.cpp src/sharding.cpp src/collectives.cpp src/bsp.cpp src/cannon.cpp src/execution.cpp)
 target_include_directories(dmm_core PUBLIC include)
 target_link_libraries(dmm_core PUBLIC Threads::Threads)
 target_compile_options(dmm_core PRIVATE -Wall -Wextra -Wpedantic)

@@ -1,5 +1,5 @@
 #include "dmm/collectives.hpp"
-#include "dmm/prepared.hpp"
+#include "dmm/bsp_plan.hpp"
 #include <algorithm>
 #include <bit>
 #include <limits>
@@ -49,17 +49,7 @@ std::vector<TreeNode> plan(std::size_t count, std::span<const TreeGroup> groups,
     }
     return nodes;
 }
-std::vector<std::size_t> payload_sizes(const Bsp& machine, const NodeBuffers& values) {
-    if (values.size() != machine.nodes()) throw std::invalid_argument("tree values must cover all nodes");
-    std::vector<std::size_t> sizes;
-    for (std::size_t id = 0; id < machine.nodes(); ++id) {
-        if (!machine.owns(id, values[id])) throw std::invalid_argument("tree payload belongs to a different logical node");
-        sizes.push_back(values[id].size());
-    }
-    return sizes;
-}
-
-void prepared_tree(PreparedBsp& machine, std::span<const TreeGroup> groups,
+void append_tree(BspPlan& machine, std::span<const TreeGroup> groups,
                    std::span<const std::size_t> buffers, std::size_t tag,
                    std::span<const ElementRegion> regions, bool reduce) {
     if (buffers.size() != machine.nodes() || regions.size() != groups.size())
@@ -94,53 +84,13 @@ void prepared_tree(PreparedBsp& machine, std::span<const TreeGroup> groups,
 }
 } // namespace
 
-void tree_broadcast(Bsp& machine, Executor& executor, std::span<const TreeGroup> groups,
-                    NodeBuffers& values, std::size_t tag, std::span<const ElementRegion> regions) {
-    const auto nodes = plan(machine.nodes(), groups, payload_sizes(machine, values), false, regions);
-    const auto depth = std::max_element(nodes.begin(), nodes.end(), [](const auto& a, const auto& b) {
-        return a.depth < b.depth;
-    })->depth;
-    if (depth == 0) return;
-    for (std::size_t level = 0; level <= depth; ++level)
-        machine.superstep("replication", executor, [&](Node& node) {
-            const auto& entry = nodes[node.id()];
-            if (!entry.member || entry.depth != level) return;
-            auto& own = values[node.id()];
-            if (level != 0) own = node.receive(entry.parent, tag, entry.words);
-            for (auto child : entry.children) node.send(child, tag, own, entry.region);
-        });
-}
-
-void tree_reduce_sum(Bsp& machine, Executor& executor, std::span<const TreeGroup> groups,
-                     NodeBuffers& values, std::size_t tag, std::span<const ElementRegion> regions) {
-    const auto nodes = plan(machine.nodes(), groups, payload_sizes(machine, values), true, regions);
-    const auto depth = std::max_element(nodes.begin(), nodes.end(), [](const auto& a, const auto& b) {
-        return a.depth < b.depth;
-    })->depth;
-    if (depth == 0) return;
-    for (std::size_t remaining = depth + 1; remaining != 0; --remaining) {
-        const auto level = remaining - 1;
-        machine.superstep("reduction", executor, [&](Node& node) {
-            const auto& entry = nodes[node.id()];
-            if (!entry.member || entry.depth != level) return;
-            auto& own = values[node.id()];
-            for (auto child : entry.children) {
-                const auto incoming = node.receive(child, tag, entry.words);
-                for (std::size_t i = 0; i < own.size(); ++i) own[i] += incoming[i];
-                node.compute(own.size());
-            }
-            if (level != 0) node.send(entry.parent, tag, own, entry.region);
-        });
-    }
-}
-
-void tree_broadcast(PreparedBsp& machine, std::span<const TreeGroup> groups,
+void tree_broadcast(BspPlan& machine, std::span<const TreeGroup> groups,
                     std::span<const std::size_t> buffers, std::size_t tag, std::span<const ElementRegion> regions) {
-    prepared_tree(machine, groups, buffers, tag, regions, false);
+    append_tree(machine, groups, buffers, tag, regions, false);
 }
-void tree_reduce_sum(PreparedBsp& machine, std::span<const TreeGroup> groups,
+void tree_reduce_sum(BspPlan& machine, std::span<const TreeGroup> groups,
                      std::span<const std::size_t> buffers, std::size_t tag, std::span<const ElementRegion> regions) {
-    prepared_tree(machine, groups, buffers, tag, regions, true);
+    append_tree(machine, groups, buffers, tag, regions, true);
 }
 
 } // namespace dmm

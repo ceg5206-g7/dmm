@@ -103,3 +103,22 @@ def test_ordinary_and_reused_plan_have_identical_executed_trace(P, workers):
         repeated, repeated_trace = cannon.matmul_traced(a, b, executor, P=P, c=1)
         np.testing.assert_array_equal(repeated, expected)
         assert _trace_signature(repeated_trace) == signature
+
+
+def test_public_shared_entry_points_use_the_same_plan_and_binding():
+    from dmm import matmul as shared
+    from dmm.algorithms import cannon
+    a = np.eye(5, dtype=np.float32)
+    shared.validate_size(5, layout='cannon', P=4, c=1)
+    job = shared.prepare(a, a, layout='cannon', P=4, c=1)
+    assert type(job) is _native.PreparedMatmul
+    with SerialExecutor() as executor:
+        output = np.empty_like(a)
+        job.run_into(output, executor)
+        expected, trace = cannon.matmul_traced(a, a, executor, P=4)
+        np.testing.assert_array_equal(output, expected)
+        np.testing.assert_array_equal(shared.matmul(a, a, executor, layout='cannon', P=4, c=1), expected)
+        assert _trace_signature(job.trace()) == _trace_signature(trace)
+    for layout in ['ring', '2.5d', 'unknown']:
+        with pytest.raises(ValueError, match='implemented|unknown'):
+            shared.prepare(a, a, layout=layout, P=64, c=1)

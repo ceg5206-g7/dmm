@@ -52,24 +52,9 @@ public:
     auto end() const noexcept { return values_.end(); }
     float& operator[](std::size_t i) noexcept { return values_[i]; }
     const float& operator[](std::size_t i) const noexcept { return values_[i]; }
-    void assign(std::size_t words, float value) {
-        if (!ledger_) throw std::logic_error("allocate buffers through BSP or Node");
-        if (words == size()) std::fill(begin(), end(), value);
-        else *this = Buffer(ledger_, std::vector<float>(words, value));
-    }
-    void assign(std::span<const float> values) {
-        if (!ledger_) throw std::logic_error("allocate buffers through BSP or Node");
-        if (values.size() == size()) std::copy(values.begin(), values.end(), begin());
-        else *this = Buffer(ledger_, std::vector<float>(values.begin(), values.end()));
-    }
-    void clear() { assign(0, 0); }
-    friend bool operator==(const Buffer& a, const Buffer& b) { return a.values_ == b.values_; }
-    friend bool operator==(const Buffer& a, const std::vector<float>& b) { return a.values_ == b; }
 
 private:
-    friend class Node;
-    friend class Bsp;
-    friend class PreparedBsp;
+    friend class BspPlan;
     Buffer(std::shared_ptr<detail::MemoryLedger> ledger, std::vector<float> values)
         : ledger_(std::move(ledger)), values_(std::move(values)) { ledger_->acquire(values_.capacity()); }
     void release() noexcept { if (ledger_) ledger_->release(values_.capacity()); }
@@ -82,5 +67,4 @@ private:
     std::vector<float> values_;
 };
 
-using NodeBuffers = std::vector<Buffer>;
 } // namespace dmm

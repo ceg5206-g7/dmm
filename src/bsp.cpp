@@ -1,5 +1,4 @@
 #include "dmm/bsp.hpp"
-#include "dmm/gemm.hpp"
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -58,110 +57,6 @@ double bsp_cost(const Counts& counts, const CostParameters& parameters) {
     return parameters.w * static_cast<double>(counts.critical_flops) +
            parameters.g * static_cast<double>(counts.critical_words) +
            parameters.l * static_cast<double>(counts.supersteps);
-}
-
-void Node::send(std::size_t destination, std::size_t tag, std::span<const float> payload,
-                std::optional<ElementRegion> region) {
-    if (region && (region->rows == 0 || region->cols == 0 ||
-        region->rows > std::numeric_limits<std::size_t>::max() / region->cols ||
-        region->rows * region->cols != payload.size() ||
-        region->row > std::numeric_limits<std::size_t>::max() - region->rows ||
-        region->col > std::numeric_limits<std::size_t>::max() - region->cols))
-        throw std::invalid_argument("message region must match payload size");
-    if (destination >= nodes_) throw std::out_of_range("message destination is not a logical node");
-    if (destination == id_) throw std::invalid_argument("a node keeps its own data instead of sending it");
-    for (const auto& message : state_.outbox)
-        if (message.destination == destination && message.tag == tag)
-            throw std::logic_error("duplicate message destination and tag in one superstep");
-    state_.outbox.push_back({destination, tag, Buffer(state_.memory, {payload.begin(), payload.end()}), region});
-}
-
-void Node::multiply_add(const ProductRegion& product,
-                        std::span<const float> a, std::size_t lda,
-                        std::span<const float> b, std::size_t ldb,
-                        std::span<float> c, std::size_t ldc) {
-    const auto& p = product;
-    if (p.m == 0 || p.n == 0 || p.inner == 0 ||
-        p.m > std::numeric_limits<std::size_t>::max() / p.n / p.inner / 2)
-        throw std::invalid_argument("recorded GEMM dimensions must be positive and FLOPs must fit");
-    const auto work = 2 * p.m * p.n * p.inner;
-    if (work > std::numeric_limits<std::size_t>::max() - state_.flops)
-        throw std::overflow_error("node FLOP counter overflow");
-    gemm_add(p.m, p.n, p.inner, a, lda, b, ldb, c, ldc);
-    state_.products.push_back({id_, product});
-    compute(work);
-}
-
-Buffer Node::receive(std::size_t source, std::size_t tag, std::size_t words) {
-    if (source >= nodes_) throw std::out_of_range("message source is not a logical node");
-    const auto message = state_.inbox.find({source, tag});
-    if (message == state_.inbox.end())
-        throw std::logic_error("no message was delivered from this source and tag");
-    if (message->second.size() != words)
-        throw std::logic_error("received payload length does not match the expected length");
-    auto payload = std::move(message->second);
-    state_.inbox.erase(message);
-    return payload;
-}
-
-Bsp::Bsp(std::size_t nodes) : states_(nodes), trace_{nodes, {}, {}} {
-    if (nodes == 0) throw std::invalid_argument("BSP machine requires at least one logical node");
-}
-
-Buffer Bsp::buffer(std::size_t node, std::size_t words) const {
-    return Buffer(states_.at(node).memory, std::vector<float>(words));
-}
-
-NodeBuffers Bsp::buffers(std::size_t words) const {
-    NodeBuffers result;
-    result.reserve(nodes());
-    for (std::size_t id = 0; id < nodes(); ++id) result.push_back(buffer(id, words));
-    return result;
-}
-
-std::size_t Bsp::live_words(std::size_t node) const { return states_.at(node).memory->live; }
-
-bool Bsp::owns(std::size_t node, const Buffer& buffer) const {
-    return states_.at(node).memory == buffer.ledger_;
-}
-
-void Bsp::superstep(std::string label, Executor& executor, const std::function<void(Node&)>& body) {
-    const auto nodes = states_.size();
-    for (const auto& state : states_) state.memory->step_peak = state.memory->live;
-    executor.for_each(nodes, [&](std::size_t id) {
-        Node node(id, nodes, states_[id]);
-        body(node);
-    });
-    for (const auto& state : states_)
-        if (!state.inbox.empty())
-            throw std::logic_error("superstep " + label + " left a delivered message unreceived");
-    SuperstepRecord record{std::move(label), std::vector<std::size_t>(nodes), {}, {}};
-    for (std::size_t source = 0; source < nodes; ++source) {
-        auto& state = states_[source];
-        record.flops[source] = std::exchange(state.flops, 0);
-        record.products.insert(record.products.end(), state.products.begin(), state.products.end());
-        state.products.clear();
-        for (auto& message : state.outbox) {
-            record.messages.push_back({source, message.destination, message.tag, message.payload.size(), message.region});
-            message.payload.rebind(states_[message.destination].memory);
-            states_[message.destination].inbox.emplace(std::pair{source, message.tag}, std::move(message.payload));
-        }
-        state.outbox.clear();
-    }
-    for (const auto& state : states_) record.peak_words.push_back(state.memory->step_peak);
-    trace_.supersteps.push_back(std::move(record));
-}
-
-Trace Bsp::finish() {
-    for (const auto& state : states_)
-        if (!state.inbox.empty())
-            throw std::logic_error("the final superstep left a delivered message unreceived");
-    trace_.peak_words.clear();
-    for (const auto& state : states_) {
-        trace_.peak_words.push_back(state.memory->peak);
-        state.memory->peak = state.memory->live;
-    }
-    return std::exchange(trace_, Trace{states_.size(), {}, {}});
 }
 
 } // namespace dmm

@@ -2,29 +2,30 @@ import numpy as np
 import pytest
 
 from dmm.algorithms import cannon
-from dmm.bsp import bsp_cost, count
+from dmm.bsp import bsp_cost, count, count_native
 from dmm.execution import SerialExecutor, ThreadExecutor
 
 
 @pytest.mark.parametrize("make_executor", [SerialExecutor, lambda: ThreadExecutor(2)])
 def test_traced_cannon_matches_product_and_hand_counts(make_executor):
     rng = np.random.default_rng(5206)
-    A = rng.uniform(-1, 1, (8, 8)).astype(np.float32)
-    B = rng.uniform(-1, 1, (8, 8)).astype(np.float32)
+    A = rng.uniform(-1, 1, (16, 16)).astype(np.float32)
+    B = rng.uniform(-1, 1, (16, 16)).astype(np.float32)
     with make_executor() as executor:
-        C, trace = cannon.matmul_traced(A, B, executor, native_layout=True)
+        C, trace = cannon.matmul_traced(A, B, executor)
         np.testing.assert_allclose(C, cannon.matmul(A, B, executor), atol=1e-4, rtol=1e-3)
     np.testing.assert_allclose(C, A.astype(np.float64) @ B, rtol=1e-5, atol=1e-5)
 
-    words, flops = 4, 16  # Block size 2.
+    words, flops = 16, 128  # Padded block size 4.
+    steps = [s for s in trace.supersteps if s.label not in ("input_conversion", "output_conversion")]
     assert trace.nodes == 16
-    assert [step.label for step in trace.supersteps] == ["skew"] + ["multiply"] * 4
-    assert [len(step.messages) for step in trace.supersteps] == [24, 32, 32, 32, 0]
-    assert all(message.words == words for step in trace.supersteps for message in step.messages)
-    counts = count(trace)
-    assert (counts.supersteps, counts.total_flops, counts.critical_flops) == (5, 2 * 8**3, 4 * flops)
+    assert [step.label for step in steps] == ["skew"] + ["multiply"] * 4
+    assert [len(step.messages) for step in steps] == [24, 32, 32, 32, 0]
+    assert all(message.words == words for step in steps for message in step.messages)
+    counts = count_native(trace)
+    assert (counts.supersteps, counts.total_flops, counts.critical_flops) == (5, 2 * 16**3, 4 * flops)
     assert (counts.total_words, counts.critical_words, counts.messages) == (120 * words, 8 * words, 120)
-    per_step = [count(step) for step in trace.supersteps]
+    per_step = [count(step) for step in steps]
     assert sum(step.critical_words for step in per_step) == counts.critical_words
     assert sum(step.critical_flops for step in per_step) == counts.critical_flops
 
@@ -32,11 +33,11 @@ def test_traced_cannon_matches_product_and_hand_counts(make_executor):
 def test_bsp_cost_recomputes_without_rerunning():
     A = np.ones((4, 4), dtype=np.float32)
     with SerialExecutor() as executor:
-        _, trace = cannon.matmul_traced(A, A, executor, native_layout=True)
-    counts = count(trace)
-    assert bsp_cost(counts) == 8
-    assert bsp_cost(counts, g=10, l=100) == 8 + 10 * 8 + 100 * 5
-    assert bsp_cost(counts, w=0.5) == 4
+        _, trace = cannon.matmul_traced(A, A, executor)
+    counts = count_native(trace)
+    assert bsp_cost(counts) == 512
+    assert bsp_cost(counts, g=10, l=100) == 512 + 10 * 128 + 100 * 5
+    assert bsp_cost(counts, w=0.5) == 256
     with pytest.raises(ValueError, match="non-negative"):
         bsp_cost(counts, g=-1)
     with pytest.raises(TypeError):
@@ -73,7 +74,7 @@ def test_invalid_cannon_configuration_rejected_by_python_and_native(P, c):
     with SerialExecutor() as executor:
         for call in (lambda: cannon.validate_size(16, P=P, c=c),
                      lambda: cannon.matmul(A, A, executor, P=P, c=c),
-                     lambda: _native.cannon_traced(A, A, executor, P=P, c=c)):
+                     lambda: _native.matmul_traced(A, A, executor, P=P, c=c)):
             with pytest.raises(ValueError):
                 call()
 
@@ -89,11 +90,11 @@ def test_trace_exposes_per_node_payload_peaks_and_count_takes_maximum(workers):
     A = np.ones((8, 8), dtype=np.float32)
     executor = ThreadExecutor(workers) if workers else SerialExecutor()
     with executor:
-        _, trace = cannon.matmul_traced(A, A, executor, native_layout=True)
+        _, trace = cannon.matmul_traced(A, A, executor)
     assert len(trace.peak_words) == 16
     assert all(len(step.peak_words) == 16 for step in trace.supersteps)
-    # Three local tiles plus at most two incoming and two outgoing tile copies.
-    assert max(trace.peak_words) == 7 * 2**2
+    # The common plan retains conversion scratch/cache capacity.
+    assert max(trace.peak_words) == 8 * 4**2
     assert count(trace).peak_words == max(trace.peak_words)
     assert max(count(step).peak_words for step in trace.supersteps) == count(trace).peak_words
 
@@ -123,18 +124,15 @@ def test_common_and_native_costs_have_explicit_conversion_boundary_and_hand_coun
     A = np.ones((16, 16), dtype=np.float32)
     with SerialExecutor() as executor:
         C, trace = cannon.matmul_traced(A, A, executor)
-        native_C, native_trace = cannon.matmul_traced(A, A, executor, native_layout=True)
-    np.testing.assert_array_equal(C, native_C)
+    np.testing.assert_array_equal(C, np.full_like(A, 16))
     end = count(trace)
     body = count_native(trace)
-    standalone = count(native_trace)
     assert (end.supersteps, end.total_flops, end.critical_flops) == (11, 8192, 512)
     assert (end.total_words, end.critical_words, end.messages) == (2496, 164, 264)
     assert (body.supersteps, body.total_words, body.critical_words) == (5, 1920, 128)
-    assert (body.total_flops, body.messages) == (standalone.total_flops, standalone.messages)
+    assert (body.total_flops, body.messages) == (8192, 120)
     # The common plan retains conversion scratch/caches during its native body.
     assert body.peak_words == 8 * 4**2
-    assert standalone.peak_words == 7 * 4**2
 
 
 @pytest.mark.parametrize("P", [1, 4, 16, 64, 256])

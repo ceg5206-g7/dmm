@@ -1,6 +1,5 @@
-#include "dmm/prepared.hpp"
+#include "dmm/bsp_plan.hpp"
 #include "dmm/gemm.hpp"
-#include <atomic>
 #include <chrono>
 #include <limits>
 #include <map>
@@ -9,7 +8,6 @@
 namespace dmm {
 namespace {
 using Clock = std::chrono::steady_clock;
-std::atomic<float> micro_sink{0};
 double seconds(Clock::time_point start) { return std::chrono::duration<double>(Clock::now() - start).count(); }
 void rectangle(std::span<const float> from, std::size_t lda, std::span<float> to, std::size_t ldb,
                std::size_t rows, std::size_t cols, bool add = false) {
@@ -20,28 +18,28 @@ void rectangle(std::span<const float> from, std::size_t lda, std::span<float> to
 }
 }
 
-PreparedBsp::PreparedBsp(std::size_t nodes) : node_times_(nodes), trace_{nodes, {}, {}} {
+BspPlan::BspPlan(std::size_t nodes) : node_times_(nodes), trace_{nodes, {}, {}} {
     if (!nodes) throw std::invalid_argument("prepared BSP needs positive nodes");
     for (std::size_t i = 0; i < nodes; ++i) memory_.push_back(std::make_shared<detail::MemoryLedger>());
 }
-void PreparedBsp::building() const {
+void BspPlan::building() const {
     if (sealed_) throw std::logic_error("prepared plan is sealed");
 }
-std::size_t PreparedBsp::allocate(std::size_t node, std::size_t words) {
+std::size_t BspPlan::allocate(std::size_t node, std::size_t words) {
     building();
     auto ledger = memory_.at(node);
     buffers_.push_back(Buffer(std::move(ledger), std::vector<float>(words)));
     owners_.push_back(node);
     return buffers_.size() - 1;
 }
-std::span<float> PreparedBsp::buffer(std::size_t id) { return buffers_.at(id); }
-std::span<float> PreparedBsp::view(BufferView v) { return buffer(v.buffer).subspan(v.offset); }
-void PreparedBsp::check_view(std::size_t node, BufferView v, std::size_t rows, std::size_t cols) const {
+std::span<float> BspPlan::buffer(std::size_t id) { return buffers_.at(id); }
+std::span<float> BspPlan::view(BufferView v) { return buffer(v.buffer).subspan(v.offset); }
+void BspPlan::check_view(std::size_t node, BufferView v, std::size_t rows, std::size_t cols) const {
     if (node >= memory_.size() || owners_.at(v.buffer) != node || !rows || !cols || v.offset > buffers_[v.buffer].size())
         throw std::invalid_argument("prepared operation must use its node's nonempty storage");
     detail::check_gemm_storage(rows, cols, v.stride, buffers_[v.buffer].size() - v.offset);
 }
-std::size_t PreparedBsp::step(const std::string& label) {
+std::size_t BspPlan::step(const std::string& label) {
     building();
     const auto phase = std::find(PHASE_NAMES.begin(), PHASE_NAMES.end(), label);
     if (phase == PHASE_NAMES.end()) throw std::invalid_argument("unknown prepared phase");
@@ -52,18 +50,18 @@ std::size_t PreparedBsp::step(const std::string& label) {
     trace_.supersteps.push_back({label, std::vector<std::size_t>(nodes), {}, std::vector<std::size_t>(nodes), {}});
     return steps_.size() - 1;
 }
-void PreparedBsp::zero(std::size_t s, std::size_t node, std::size_t id) {
+void BspPlan::zero(std::size_t s, std::size_t node, std::size_t id) {
     building();
     check_view(node, {id, 0, buffers_.at(id).size()}, 1, buffers_.at(id).size());
     steps_.at(s).copies.at(node).push_back({Kind::zero, {id, 0, 0}});
 }
-void PreparedBsp::copy(std::size_t s, std::size_t node, BufferView from, BufferView to,
+void BspPlan::copy(std::size_t s, std::size_t node, BufferView from, BufferView to,
                        std::size_t rows, std::size_t cols) {
     building(); check_view(node, from, rows, cols); check_view(node, to, rows, cols);
     if (from.buffer == to.buffer) throw std::invalid_argument("use a separate scratch buffer for in-place layout conversion");
     steps_.at(s).copies.at(node).push_back({Kind::copy, from, to, {}, rows, cols});
 }
-std::size_t PreparedBsp::send(std::size_t s, std::size_t src, std::size_t dst, std::size_t tag,
+std::size_t BspPlan::send(std::size_t s, std::size_t src, std::size_t dst, std::size_t tag,
                              BufferView from, ElementRegion region) {
     building(); check_view(src, from, region.rows, region.cols);
     if (dst >= memory_.size() || dst == src || region.rows > std::numeric_limits<std::size_t>::max() / region.cols)
@@ -74,11 +72,11 @@ std::size_t PreparedBsp::send(std::size_t s, std::size_t src, std::size_t dst, s
     auto& step = steps_.at(s);
     const auto id = messages_.size(), record = trace_.supersteps[s].messages.size();
     step.sends.at(src).push_back({Kind::send, from, {}, {}, region.rows, region.cols, id, record});
-    messages_.push_back({s, src, dst, tag, from, region});
+    messages_.push_back({s, src, dst, tag, region});
     trace_.supersteps[s].messages.push_back({});
     return id;
 }
-void PreparedBsp::receive(std::size_t s, std::size_t node, std::size_t id, BufferView to, bool add) {
+void BspPlan::receive(std::size_t s, std::size_t node, std::size_t id, BufferView to, bool add) {
     building();
     auto& m = messages_.at(id);
     if (m.step + 1 != s || m.destination != node || m.consumed)
@@ -87,7 +85,7 @@ void PreparedBsp::receive(std::size_t s, std::size_t node, std::size_t id, Buffe
     steps_.at(s).copies.at(node).push_back({Kind::receive, {}, to, {}, m.region.rows, m.region.cols, id, 0, add});
     m.consumed = true;
 }
-void PreparedBsp::multiply_add(std::size_t s, std::size_t node, ProductRegion p,
+void BspPlan::multiply_add(std::size_t s, std::size_t node, ProductRegion p,
                                BufferView a, BufferView b, BufferView c) {
     building(); check_view(node, a, p.m, p.inner); check_view(node, b, p.inner, p.n); check_view(node, c, p.m, p.n);
     if (c.buffer == a.buffer || c.buffer == b.buffer || p.m > std::numeric_limits<std::size_t>::max() / p.n / p.inner / 2)
@@ -96,9 +94,13 @@ void PreparedBsp::multiply_add(std::size_t s, std::size_t node, ProductRegion p,
     steps_.at(s).kernels.at(node).push_back({Kind::gemm, a, b, c, 0, 0, 0, record, false, p});
     trace_.supersteps[s].products.push_back({});
 }
-void PreparedBsp::seal(std::size_t original, std::size_t padded, CoverageGrid grid) {
+void BspPlan::seal(std::size_t original, std::size_t padded, CoverageGrid grid) {
     building();
     if (!original || padded < original || steps_.empty()) throw std::invalid_argument("invalid prepared matrix dimensions/steps");
+    if (!grid.row_parts || !grid.inner_parts || !grid.col_parts ||
+        padded % grid.row_parts || padded % grid.inner_parts || padded % grid.col_parts)
+        throw std::invalid_argument("coverage grid must partition the padded matrix");
+    detail::elements<float>(padded);
     // Reuse each sender's same-size message slots after all previous receives finish.
     std::map<std::tuple<std::size_t, std::size_t, std::size_t>, std::size_t> cache;
     std::map<std::tuple<std::size_t, std::size_t, std::size_t>, std::size_t> ordinals;
@@ -129,7 +131,7 @@ void PreparedBsp::seal(std::size_t original, std::size_t padded, CoverageGrid gr
     trace_.peak_words.resize(memory_.size());
     sealed_ = true;
 }
-RunTimings PreparedBsp::execute(Executor& executor) {
+RunTimings BspPlan::execute(Executor& executor) {
     if (!sealed_) throw std::logic_error("seal prepared plan before execution");
     executed_ = false;
     // A failed executor batch may leave delivered cache slots at their recipients.
@@ -198,43 +200,9 @@ RunTimings PreparedBsp::execute(Executor& executor) {
     executed_ = true;
     return result;
 }
-const Trace& PreparedBsp::trace() const {
+const Trace& BspPlan::trace() const {
     if (!executed_) throw std::logic_error("prepared trace requires a successful execution");
     return trace_;
 }
 
-double microbenchmark(const std::string& kind, std::size_t size, std::size_t iterations,
-                      std::size_t nodes, Executor& executor) {
-    if ((kind != "compute" && kind != "copy" && kind != "synchronization") || !size || !iterations || !nodes)
-        throw std::invalid_argument("invalid microbenchmark specification");
-    const auto words = kind == "compute" ? detail::elements<float>(size) : size;
-    std::vector<std::vector<float>> a(nodes, std::vector<float>(words, .01f)), b = a, c = a;
-    std::vector<double> elapsed(nodes);
-    auto task = [&](std::size_t node) {
-        const auto start = Clock::now();
-        for (std::size_t i = 0; i < iterations; ++i) {
-            if (kind == "compute") gemm_add(size, size, size, a[node], size, b[node], size, c[node], size);
-            else if (kind == "copy") {
-                std::copy(a[node].begin(), a[node].end(), b[node].begin());
-                std::atomic_signal_fence(std::memory_order_seq_cst);
-                std::copy(b[node].begin(), b[node].end(), c[node].begin());
-                std::atomic_signal_fence(std::memory_order_seq_cst);
-            }
-        }
-        elapsed[node] = seconds(start);
-        float checksum = 0;
-        for (const auto value : c[node]) checksum += value;
-        micro_sink.store(checksum, std::memory_order_relaxed);
-    };
-    if (kind == "synchronization") {
-        // The prepared protocol has three blocking executor batches per logical step.
-        auto empty = [](std::size_t) {};
-        const auto start = Clock::now();
-        for (std::size_t i = 0; i < iterations; ++i)
-            for (int batch = 0; batch < 3; ++batch) executor.for_each(nodes, std::ref(empty));
-        return seconds(start);
-    }
-    executor.for_each(nodes, std::ref(task));
-    return *std::max_element(elapsed.begin(), elapsed.end());
-}
 } // namespace dmm
