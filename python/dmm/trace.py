@@ -16,8 +16,9 @@ from dmm._native import (Trace, SuperstepRecord, MessageRecord, ElementRegion,
                          count, count_native, bsp_cost, validate_coverage)
 
 COUNT_FIELDS = ("F_total", "W_crit", "C_total", "C_crit", "S", "peak_words", "messages")
+PERFORMANCE_FIELDS = ("gflops", "speedup", "parallel_efficiency")
 MODEL_FIELDS = ("n", "n_padded", "P", "H", "layout", "c", "phase", *COUNT_FIELDS,
-                "gamma", "lambda", "T_model", "t_measured")
+                "gamma", "lambda", "T_model", "t_measured", *PERFORMANCE_FIELDS)
 
 
 def write_json(path, value):

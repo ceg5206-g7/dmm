@@ -53,6 +53,7 @@ def test_real_capture_and_recompute_never_reruns_algorithms_or_loads_inputs(conf
         rows = list(csv.DictReader(handle))
     assert len(rows) == 8
     assert all(row["t_measured"] == "" and row["H"] == "1" for row in rows)
+    assert all(row[k] == "" for row in rows for k in ("gflops", "speedup", "parallel_efficiency"))
     for row in rows:
         expected = int(row["W_crit"]) + float(row["gamma"]) * int(row["C_crit"]) + float(row["lambda"]) * int(row["S"])
         assert float(row["T_model"]) == expected

@@ -177,6 +177,9 @@ class MeasurementConfig:
             raise ValueError("warmups must be a non-negative integer")
         if type(self.repeats) is not int or self.repeats < 1:
             raise ValueError("repeats must be a positive integer")
+        H = self.workers or 1
+        if any(case["P"] > H for case in self.cases):
+            raise ValueError("measurement requires P <= H; use dmm model for P > H correctness/counting")
         # Micro GEMMs are deliberately disjoint from held-out full matrix sizes.
         if set(self.sizes) & {32, 64, 96}:
             raise ValueError("sizes must be held out from calibration sizes 32/64/96")

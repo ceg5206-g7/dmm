@@ -1,5 +1,6 @@
 """Independent local calibration and held-out, allocation-free matrix measurements."""
 
+import csv
 from dataclasses import asdict
 from hashlib import sha256
 from importlib import import_module
@@ -19,8 +20,9 @@ from dmm.config import LAYOUT_MODULES, MeasurementConfig
 from dmm.datasets import load_manifest, load_pair, load_reference
 from dmm.execution import SerialExecutor, ThreadExecutor
 from dmm.trace import (MODEL_FIELDS, write_csv, write_json, trace_name,
-                       save_trace_manifest, trace_record, validate_trace_record)
+                       save_trace_manifest, trace_record, validate_trace_record, load_traces)
 
+BOUNDARY = 'common row-shard input to common row-shard output; includes packing/conversion/copies/zeroing/compute/scheduling; excludes allocation/host adapters/validation'
 PARTS = ('total', 'compute', 'copy', 'synchronization')
 MICROS = [('compute', n, 16) for n in (32, 64, 96)] + [('copy', n, 128) for n in (1024, 4096, 16384)] + [
     ('synchronization', 1, 100)]
@@ -71,7 +73,7 @@ def calibrate(executor, H, warmups, repeats):
 
 
 def _environment(cores):
-    return dict(system=platform.platform(), machine=platform.machine(), processor=platform.processor(),
+    return dict(host=platform.node(), system=platform.platform(), machine=platform.machine(), processor=platform.processor(),
                 physical_cores=cores, logical_cpus=os.cpu_count(), compiler=_native.compiler,
                 build_type=_native.build_type, load_average=list(os.getloadavg()),
                 affinity_policy='unbound persistent std::threads; static round-robin logical tasks; same policy for micro/full runs',
@@ -97,7 +99,61 @@ def _timing_rows(timing):
         yield phase, parts
 
 
-def run_measurement(config: MeasurementConfig):
+def _implementation_sha256():
+    # Baselines must use the same executable runtime and measurement protocol, including dirty checkouts.
+    return dict(native=sha256(Path(_native.__file__).read_bytes()).hexdigest(),
+                measurement=sha256(Path(__file__).read_bytes()).hexdigest(),
+                statistics=sha256(Path(__file__).with_name('analysis.py').read_bytes()).hexdigest())
+
+
+def _load_serial_baseline(directory, config, environment, implementation):
+    directory = Path(directory).resolve()
+    raw = (directory / 'manifest.json').read_bytes()
+    manifest = json.loads(raw)
+    if not isinstance(manifest, dict) or type(manifest.get('schema')) is not int or manifest['schema'] != 1:
+        raise ValueError('unsupported baseline measurement manifest')
+    try:
+        saved = MeasurementConfig(**manifest.get('settings', {}))
+    except TypeError as error:
+        raise ValueError('invalid baseline measurement settings') from error
+    saved.validate()
+    if saved.workers != 0 or any(case['P'] != 1 or case['c'] != 1 for case in saved.cases):
+        raise ValueError('baseline must be a serial P=1/H=1 measurement')
+    if (saved.group, saved.warmups, saved.repeats) != (config.group, config.warmups, config.repeats):
+        raise ValueError('baseline group/warmups/repeats must match measurement')
+    if manifest.get('boundary') != BOUNDARY or manifest.get('implementation_sha256') != implementation:
+        raise ValueError('baseline timing boundary or implementation does not match; recapture baseline')
+    previous = manifest.get('environment_before')
+    if not isinstance(previous, dict) or any(previous.get(k) != environment[k] for k in
+            ('host', 'system', 'machine', 'processor', 'physical_cores', 'compiler', 'build_type', 'affinity_mask')):
+        raise ValueError('baseline must come from the same host/build/CPU affinity')
+    inventory = manifest.get('artifacts_sha256')
+    csv_path, trace_manifest = directory / 'measured_model.csv', directory / 'traces/manifest.json'
+    if (not isinstance(inventory, dict) or sha256(csv_path.read_bytes()).hexdigest() != inventory.get(csv_path.name)
+            or sha256(trace_manifest.read_bytes()).hexdigest() != manifest.get('trace_manifest_sha256')):
+        raise ValueError('baseline report checksum mismatch')
+    records = load_traces(directory / 'traces', saved)
+    traces = {(r['n'], r['layout'], r['c']): r for r, _ in records}
+    result = {}
+    with csv_path.open(newline='', encoding='utf-8') as handle:
+        reader = csv.DictReader(handle)
+        if not {'n', 'P', 'H', 'layout', 'c', 'phase', 't_measured'} <= set(reader.fieldnames or []):
+            raise ValueError('invalid baseline measurement columns')
+        for row in reader:
+            if None in row or any(value is None for value in row.values()):
+                raise ValueError('invalid baseline measurement row')
+            if row['phase'] != 'end_to_end':
+                continue
+            key = (int(row['n']), row['layout'], int(row['c']))
+            if int(row['P']) != 1 or int(row['H']) != 1 or key not in traces or key in result:
+                raise ValueError('invalid or duplicate baseline measurement identity')
+            result[key] = (_positive_time(float(row['t_measured'])), traces[key]['inputs_sha256'])
+    if result.keys() != traces.keys():
+        raise ValueError('baseline measurement is incomplete')
+    return result, dict(directory=str(directory), manifest_sha256=sha256(raw).hexdigest())
+
+
+def run_measurement(config: MeasurementConfig, baseline=None):
     """No per-matrix fit: save raw samples, frozen parameters, traces and residuals."""
     config.validate()
     output = Path(config.output_dir)
@@ -120,11 +176,13 @@ def run_measurement(config: MeasurementConfig):
         for n in config.sizes:
             module.validate_size(n, P=case['P'], c=case['c'])
         modules.append((case, module))
+    before, implementation = _environment(cores), _implementation_sha256()
+    baselines, baseline_provenance = ({}, None) if baseline is None else _load_serial_baseline(
+        baseline, config, before, implementation)
     manifest = load_manifest(config.data_dir)
     if config.group not in manifest.groups or not set(config.sizes) <= set(manifest.sizes):
         raise ValueError('measurement group/sizes must be present in dataset manifest')
     output.mkdir(parents=True, exist_ok=False)
-    before = _environment(cores)
     samples, summaries, traces, correctness, trace_correctness = [], [], [], [], []
     trace_dir = output / 'traces'
     trace_dir.mkdir()
@@ -144,6 +202,9 @@ def run_measurement(config: MeasurementConfig):
                 a, b = load_pair(config.data_dir, config.group, n)
                 reference = load_reference(config.data_dir, config.group, n)
                 hashes = {'A': sha256(a.tobytes()).hexdigest(), 'B': sha256(b.tobytes()).hexdigest()}
+                reference_baseline = baselines.get((n, case['layout'], case['c']))
+                if reference_baseline is not None and reference_baseline[1] != hashes:
+                    raise ValueError('baseline input hashes do not match measured matrices')
                 a.flags.writeable = b.flags.writeable = False
                 prepared = module.prepare(a, b, P=case['P'], c=case['c'])
                 result = np.empty_like(a, order='C')
@@ -178,14 +239,27 @@ def run_measurement(config: MeasurementConfig):
                     w, g, l = (parameters[k] for k in ('w', 'g', 'l'))
                     prediction = w * counts['W_crit'] + g * counts['C_crit'] + l * counts['S']
                     measured = parts['total_median_s']
-                    summaries.append(dict(n=n, n_padded=record['n_padded'], **case, H=H, phase=phase, **counts,
+                    row = dict(n=n, n_padded=record['n_padded'], **case, H=H, phase=phase, **counts,
                         gamma=g / w, **{'lambda': l / w}, T_model=prediction / w, t_measured=measured,
                         w=w, g=g, l=l, T_model_seconds=prediction, residual_seconds=measured - prediction,
-                        relative_residual=(measured - prediction) / measured, **parts))
+                        relative_residual=(measured - prediction) / measured, **parts)
+                    if phase == 'end_to_end':
+                        row['gflops'] = 2 * n ** 3 / (1e9 * measured)
+                        serial_time = measured if config.workers == 0 else (
+                            reference_baseline[0] if reference_baseline is not None else None)
+                        if serial_time is not None:
+                            row.update(baseline_time_s=serial_time, baseline_P=1, baseline_H=1,
+                                       baseline_source='self' if config.workers == 0 else baseline_provenance['directory'],
+                                       speedup=serial_time / measured, parallel_efficiency=serial_time / measured / H)
+                        if any(not isfinite(row[k]) or row[k] <= 0 for k in
+                               ('gflops', 'speedup', 'parallel_efficiency') if k in row):
+                            raise ValueError('invalid measured performance metric')
+                    summaries.append(row)
     save_trace_manifest(config, trace_dir, traces, trace_correctness,
                         'prepared measurement trace; retained cache memory counted; use measured_model.csv for statistical times')
     sample_fields = ('n', 'layout', 'P', 'c', 'H', 'phase', 'repeat', *PARTS)
     extra_fields = ('w', 'g', 'l', 'T_model_seconds', 'residual_seconds', 'relative_residual',
+                    'baseline_time_s', 'baseline_P', 'baseline_H', 'baseline_source',
                     *(f'{part}_{stat}_s' for part in PARTS for stat in ('median', 'iqr')))
     write_csv(output / 'samples.csv', sample_fields, samples)
     write_csv(output / 'measured_model.csv', (*MODEL_FIELDS, *extra_fields), summaries)
@@ -199,7 +273,9 @@ def run_measurement(config: MeasurementConfig):
         trace_manifest_sha256=sha256((trace_dir / 'manifest.json').read_bytes()).hexdigest(),
         traces=traces, executed_configurations=len(modules) * len(config.sizes),
         input_manifest=json.loads((Path(config.data_dir) / 'manifest.json').read_text()),
-        boundary='common row-shard input to common row-shard output; includes packing/conversion/copies/zeroing/compute/scheduling; excludes allocation/host adapters/validation',
+        boundary=BOUNDARY, implementation_sha256=implementation, serial_baseline=baseline_provenance,
+        performance_rule='end_to_end only: gflops=2*n_original^3/(1e9*median_seconds); speedup=serial_P1_H1_seconds/median_seconds; parallel_efficiency=speedup/H; missing baseline stays blank',
+        execution_rule='measurement requires P<=H<=available physical cores; P>H is correctness/counting only',
         model_units='T_model is FLOP-equivalents; T_model_seconds and t_measured are seconds',
         holdout='full matrix sizes never used to fit w/g/l; frozen micro calibration only; residuals are reported without refitting'))
     return output

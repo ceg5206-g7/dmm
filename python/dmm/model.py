@@ -11,7 +11,7 @@ from dmm.benchmark import _validate_product, source_revision
 from dmm.config import LAYOUT_MODULES, ModelConfig
 from dmm.datasets import load_manifest, load_pair, load_reference
 from dmm.execution import SerialExecutor, ThreadExecutor
-from dmm.trace import (MODEL_FIELDS, write_csv, write_json, trace_name,
+from dmm.trace import (MODEL_FIELDS, PERFORMANCE_FIELDS, write_csv, write_json, trace_name,
                        trace_record, save_trace_manifest, load_traces)
 
 SELECTION_FIELDS = ("n", "P", "gamma", "lambda", "mu", "M_cap", "feasible", "infeasible",
@@ -68,7 +68,8 @@ def _model_row(record, phase, counts, gamma, latency):
         raise ValueError("model cost is not finite")
     return {"n": record["n"], "n_padded": record["n_padded"], "P": record["P"],
             "H": record["H"], "layout": record["layout"], "c": record["c"], "phase": phase,
-            **counts, "gamma": gamma, "lambda": latency, "T_model": cost, "t_measured": ""}
+            **counts, "gamma": gamma, "lambda": latency, "T_model": cost, "t_measured": "",
+            **dict.fromkeys(PERFORMANCE_FIELDS, "")}
 
 
 def _winner(candidates, scope):

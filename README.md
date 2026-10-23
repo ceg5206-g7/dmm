@@ -441,10 +441,17 @@ Prepared measurements and independent local calibration:
 
 ```sh
 uv run dmm measure --config configs/measure_serial.yaml
-uv run dmm measure --config configs/measure_threaded.yaml
+uv run dmm measure --config configs/measure_threaded.yaml --baseline results/measure_serial
 ```
 
 These measure common rows to rows after preallocation, with 5 warmups/15 repeats,
 frozen microkernel w/g/l and held-out residuals. The four-worker profile requires
 four physical cores. See [the measurement protocol](doc/docs/measurement.md).
 Ring and 2.5D still belong to teammates; the full 24-run comparison awaits them.
+
+Formal measurement requires P<=H<=available physical cores; use `dmm model`
+for P>H correctness/counting. End-to-end measured rows report useful GFLOP/s.
+The optional explicit serial P=1/H=1 measurement baseline supplies speedup and
+efficiency (speedup/H), with matching implementation, host, protocol and inputs.
+Missing baselines leave these comparisons blank. Model-only CSVs leave measured
+performance fields blank. See [baseline checks and formulas](doc/docs/measurement.md#measured-throughput-and-parallel-efficiency).

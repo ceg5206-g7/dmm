@@ -26,6 +26,7 @@ def main() -> None:
     model.add_argument("--traces", type=Path, help="Reuse a complete trace directory without rerunning algorithms")
     measure = commands.add_parser("measure", help="Calibrate independent microkernels and measure prepared cases")
     measure.add_argument("--config", type=Path, default=Path("configs/measure_serial.yaml"))
+    measure.add_argument("--baseline", type=Path, help="Completed serial P=1/H=1 measurement directory for speedup/efficiency")
     args = parser.parse_args()
 
     try:
@@ -38,7 +39,7 @@ def main() -> None:
             completed = run_benchmark(config)
             print(f"Saved {completed} benchmark result(s) to {config.output}")
         elif args.command == "measure":
-            output_dir = run_measurement(load_measurement_config(args.config))
+            output_dir = run_measurement(load_measurement_config(args.config), baseline=args.baseline)
             print(f"Saved calibrated measurements to {output_dir}")
         elif args.command == "model":
             config = load_model_config(args.config)
