@@ -1,4 +1,4 @@
-#include "dmm/bsp.hpp"
+#include "dmm/trace.hpp"
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -20,7 +20,8 @@ Counts count(const SuperstepRecord& superstep) {
     const auto nodes = superstep.flops.size();
     std::vector<std::size_t> sent(nodes), received(nodes);
     Counts counts;
-    for (auto words : superstep.peak_words) counts.peak_words = std::max(counts.peak_words, words);
+    for (auto words : superstep.peak_words)
+        counts.peak_words = std::max(counts.peak_words, words);
     counts.supersteps = 1;
     counts.messages = superstep.messages.size();
     for (const auto& message : superstep.messages) {
@@ -38,15 +39,18 @@ Counts count(const SuperstepRecord& superstep) {
 
 Counts count(const Trace& trace) {
     Counts counts;
-    for (const auto& superstep : trace.supersteps) counts += count(superstep);
-    for (auto words : trace.peak_words) counts.peak_words = std::max(counts.peak_words, words);
+    for (const auto& superstep : trace.supersteps)
+        counts += count(superstep);
+    for (auto words : trace.peak_words)
+        counts.peak_words = std::max(counts.peak_words, words);
     return counts;
 }
 
 Counts count_native(const Trace& trace) {
     Counts counts;
     for (const auto& step : trace.supersteps)
-        if (step.label != "input_conversion" && step.label != "output_conversion") counts += count(step);
+        if (step.label != "input_conversion" && step.label != "output_conversion")
+            counts += count(step);
     return counts;
 }
 

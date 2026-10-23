@@ -1,96 +1,93 @@
 #include "dmm/collectives.hpp"
-#include "dmm/bsp_plan.hpp"
-#include <algorithm>
 #include <bit>
-#include <limits>
-#include <stdexcept>
 
 namespace dmm {
 namespace {
 struct TreeNode {
     bool member = false;
-    std::size_t depth = 0, parent = 0, words = 0;
+    std::size_t depth = 0, parent = 0;
     std::vector<std::size_t> children;
-    std::optional<ElementRegion> region;
 };
-
-std::vector<TreeNode> plan(std::size_t count, std::span<const TreeGroup> groups,
-                           std::span<const std::size_t> sizes, bool reduce, std::span<const ElementRegion> regions) {
-    if (groups.empty() || sizes.size() != count)
-        throw std::invalid_argument("tree groups must be non-empty and values must cover all nodes");
-    if (!regions.empty() && regions.size() != groups.size())
-        throw std::invalid_argument("tree regions must match the number of groups");
-    std::vector<TreeNode> nodes(count);
-    for (std::size_t g = 0; g < groups.size(); ++g) {
-        const auto& group = groups[g];
-        if (group.empty()) throw std::invalid_argument("tree group must have a root");
+void append_tree(BspPlan& plan, std::span<const TreeGroup> groups, const NodePayloads& payloads,
+                 bool reduce) {
+    if (groups.empty() || payloads.size() != plan.nodes())
+        throw std::invalid_argument("tree needs groups and one payload list per node");
+    std::vector<TreeNode> nodes(plan.nodes());
+    std::vector<std::vector<MatrixView>> targets(plan.nodes());
+    std::size_t depth = 0;
+    for (const auto& group : groups) {
+        if (group.empty() || group[0] >= plan.nodes())
+            throw std::invalid_argument("tree needs a valid root");
+        const auto& root = payloads[group[0]];
+        if (root.empty())
+            throw std::invalid_argument("tree payload must be nonempty");
         for (std::size_t rank = 0; rank < group.size(); ++rank) {
-            const auto id = group[rank];
-            if (id >= count || nodes[id].member)
-                throw std::invalid_argument("tree node ids must be in range and groups disjoint");
-            nodes[id].member = true;
-            nodes[id].depth = std::bit_width(rank + 1) - 1;
-            nodes[id].words = sizes[group[0]];
-            if (!regions.empty()) {
-                const auto& r = regions[g];
-                if (r.rows == 0 || r.cols == 0 || r.rows > std::numeric_limits<std::size_t>::max() / r.cols ||
-                    r.rows * r.cols != nodes[id].words || r.row > std::numeric_limits<std::size_t>::max() - r.rows ||
-                    r.col > std::numeric_limits<std::size_t>::max() - r.cols)
-                    throw std::invalid_argument("tree region must match its payload without overflow");
-                nodes[id].region = r;
+            const auto node = group[rank];
+            if (node >= plan.nodes() || nodes[node].member || payloads[node].size() != root.size())
+                throw std::invalid_argument("tree groups must be disjoint with matching component counts");
+            auto& entry = nodes[node];
+            entry.member = true;
+            entry.depth = std::bit_width(rank + 1) - 1;
+            depth = std::max(depth, entry.depth);
+            for (std::size_t p = 0; p < root.size(); ++p) {
+                const auto& part = payloads[node][p];
+                const auto& reference = root[p];
+                if (plan.owner(part.view) != node || part.view.rows != reference.view.rows ||
+                    part.view.cols != reference.view.cols || part.origin.row != reference.origin.row ||
+                    part.origin.col != reference.origin.col)
+                    throw std::invalid_argument(
+                        "tree components need matching shapes/regions and correct owners");
+                targets[node].push_back(part.view);
             }
-            if (reduce && sizes[id] != nodes[id].words)
-                throw std::invalid_argument("reduction payload lengths must match within each group");
-            if (rank != 0) {
-                nodes[id].parent = group[(rank - 1) / 2];
-                nodes[nodes[id].parent].children.push_back(id);
+            if (rank) {
+                entry.parent = group[(rank - 1) / 2];
+                nodes[entry.parent].children.push_back(node);
             }
         }
     }
-    return nodes;
-}
-void append_tree(BspPlan& machine, std::span<const TreeGroup> groups,
-                   std::span<const std::size_t> buffers, std::size_t tag,
-                   std::span<const ElementRegion> regions, bool reduce) {
-    if (buffers.size() != machine.nodes() || regions.size() != groups.size())
-        throw std::invalid_argument("prepared tree needs one buffer per node and one region per group");
-    std::vector<std::size_t> sizes;
-    for (std::size_t id = 0; id < machine.nodes(); ++id) {
-        if (!machine.owns(id, buffers[id])) throw std::invalid_argument("tree payload belongs to a different logical node");
-        sizes.push_back(machine.buffer(buffers[id]).size());
-    }
-    const auto nodes = plan(machine.nodes(), groups, sizes, true, regions);
-    const auto depth = std::max_element(nodes.begin(), nodes.end(), [](const auto& a, const auto& b) {
-        return a.depth < b.depth;
-    })->depth;
-    if (depth == 0) return;
-    std::vector<std::size_t> steps, messages(nodes.size());
-    for (std::size_t level = 0; level <= depth; ++level) steps.push_back(machine.step(reduce ? "reduction" : "replication"));
+    if (!depth)
+        return;
     for (std::size_t round = 0; round <= depth; ++round) {
-        const auto level = reduce ? depth - round : round, step = steps[round];
-        for (std::size_t id = 0; id < nodes.size(); ++id) {
-            const auto& entry = nodes[id];
-            if (!entry.member || entry.depth != level) continue;
-            const BufferView own{buffers[id], 0, entry.region->cols};
+        const auto level = reduce ? depth - round : round;
+        auto step = plan.add_superstep(reduce ? Phase::Reduction : Phase::Replication);
+        for (std::size_t node = 0; node < nodes.size(); ++node) {
+            const auto& entry = nodes[node];
+            if (!entry.member || entry.depth != level)
+                continue;
             if (reduce) {
-                for (auto child : entry.children) machine.receive(step, id, messages[child], own, true);
-                if (level != 0) messages[id] = machine.send(step, id, entry.parent, tag, own, *entry.region);
+                for (auto child : entry.children)
+                    step.add_receive_sum(child, targets[node]);
+                if (level)
+                    step.add_send(entry.parent, payloads[node]);
             } else {
-                if (level != 0) machine.receive(step, id, messages[id], own);
-                for (auto child : entry.children) messages[child] = machine.send(step, id, child, tag, own, *entry.region);
+                if (level)
+                    step.add_receive(entry.parent, targets[node]);
+                for (auto child : entry.children)
+                    step.add_send(child, payloads[node]);
             }
         }
     }
+}
+NodePayloads single_components(std::span<const PayloadPart> payloads) {
+    NodePayloads result(payloads.size());
+    for (std::size_t node = 0; node < payloads.size(); ++node)
+        if (payloads[node].view.rows)
+            result[node].push_back(payloads[node]);
+    return result;
 }
 } // namespace
-
-void tree_broadcast(BspPlan& machine, std::span<const TreeGroup> groups,
-                    std::span<const std::size_t> buffers, std::size_t tag, std::span<const ElementRegion> regions) {
-    append_tree(machine, groups, buffers, tag, regions, false);
+void add_tree_broadcast(BspPlan& plan, std::span<const TreeGroup> groups, const NodePayloads& payloads) {
+    append_tree(plan, groups, payloads, false);
 }
-void tree_reduce_sum(BspPlan& machine, std::span<const TreeGroup> groups,
-                     std::span<const std::size_t> buffers, std::size_t tag, std::span<const ElementRegion> regions) {
-    append_tree(machine, groups, buffers, tag, regions, true);
+void add_tree_reduce_sum(BspPlan& plan, std::span<const TreeGroup> groups, const NodePayloads& payloads) {
+    append_tree(plan, groups, payloads, true);
 }
-
+void add_tree_broadcast(BspPlan& plan, std::span<const TreeGroup> groups,
+                        std::span<const PayloadPart> payloads) {
+    append_tree(plan, groups, single_components(payloads), false);
+}
+void add_tree_reduce_sum(BspPlan& plan, std::span<const TreeGroup> groups,
+                         std::span<const PayloadPart> payloads) {
+    append_tree(plan, groups, single_components(payloads), true);
+}
 } // namespace dmm

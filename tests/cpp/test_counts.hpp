@@ -1,5 +1,5 @@
 #pragma once
-#include "dmm/bsp.hpp"
+#include "dmm/trace.hpp"
 #include <gtest/gtest.h>
 
 // Independent schedule checks; payload peaks have separate lifecycle tests.

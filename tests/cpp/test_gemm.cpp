@@ -1,4 +1,4 @@
-#include "dmm/gemm.hpp"
+#include "dmm/detail/gemm.hpp"
 #include <gtest/gtest.h>
 #include <cmath>
 #include <limits>

@@ -113,10 +113,11 @@ def test_common_padding_crops_and_reports_executed_dimensions(n):
     assert count(trace).total_flops == 2 * trace.padded_size**3
     for step in trace.supersteps:
         for message in step.messages:
-            assert message.region is not None
-            assert message.region.rows * message.region.cols == message.words
-            assert message.region.row + message.region.rows <= trace.padded_size
-            assert message.region.col + message.region.cols <= trace.padded_size
+            assert message.regions
+            assert sum(r.rows * r.cols for r in message.regions) == message.words
+            for region in message.regions:
+                assert region.row + region.rows <= trace.padded_size
+                assert region.col + region.cols <= trace.padded_size
 
 
 def test_common_and_native_costs_have_explicit_conversion_boundary_and_hand_counts():

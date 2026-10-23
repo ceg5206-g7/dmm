@@ -18,7 +18,8 @@ from dmm.benchmark import _validate_product, source_revision
 from dmm.config import LAYOUT_MODULES, MeasurementConfig
 from dmm.datasets import load_manifest, load_pair, load_reference
 from dmm.execution import SerialExecutor, ThreadExecutor
-from dmm.model import MODEL_FIELDS, _csv, _write_json, _trace_name, save_trace_manifest, trace_record, validate_trace_record
+from dmm.trace import (MODEL_FIELDS, write_csv, write_json, trace_name,
+                       save_trace_manifest, trace_record, validate_trace_record)
 
 PARTS = ('total', 'compute', 'copy', 'synchronization')
 MICROS = [('compute', n, 16) for n in (32, 64, 96)] + [('copy', n, 128) for n in (1024, 4096, 16384)] + [
@@ -131,8 +132,8 @@ def run_measurement(config: MeasurementConfig):
     executor = ThreadExecutor(config.workers) if config.workers else SerialExecutor()
     with executor:
         parameters, variability, micro_rows = calibrate(executor, H, config.warmups, config.repeats)
-        _csv(output / 'microbenchmarks.csv', ('kind', 'size', 'iterations', 'H', 'repeat', 'seconds', 'units', 'seconds_per_unit'), micro_rows)
-        _write_json(output / 'calibration.json', dict(parameters_seconds=parameters, iqr_seconds_per_unit=variability,
+        write_csv(output / 'microbenchmarks.csv', ('kind', 'size', 'iterations', 'H', 'repeat', 'seconds', 'units', 'seconds_per_unit'), micro_rows)
+        write_json(output / 'calibration.json', dict(parameters_seconds=parameters, iqr_seconds_per_unit=variability,
             H=H, warmups=config.warmups, repeats=config.repeats, micro_sizes=[32, 64, 96],
             method='median/IQR of equally weighted normalized micro samples across sizes; frozen before any matrix run',
             compute='critical local shared GEMM seconds/FLOP', copy='critical local send+receive copy seconds/word',
@@ -158,8 +159,8 @@ def run_measurement(config: MeasurementConfig):
                         samples.append(row); case_samples.append(row)
                     correctness.append(dict(n=n, **case, H=H, repeat=repeat, **errors))
                 record = trace_record(prepared.trace(), case, H, errors, hashes)
-                path = trace_dir / _trace_name(n, case)
-                _write_json(path, record)
+                path = trace_dir / trace_name(n, case)
+                write_json(path, record)
                 traces.append(dict(name=path.name, sha256=sha256(path.read_bytes()).hexdigest()))
                 trace_correctness.append(dict(n=n, **case, **errors))
                 metrics = validate_trace_record(record)
@@ -186,14 +187,14 @@ def run_measurement(config: MeasurementConfig):
     sample_fields = ('n', 'layout', 'P', 'c', 'H', 'phase', 'repeat', *PARTS)
     extra_fields = ('w', 'g', 'l', 'T_model_seconds', 'residual_seconds', 'relative_residual',
                     *(f'{part}_{stat}_s' for part in PARTS for stat in ('median', 'iqr')))
-    _csv(output / 'samples.csv', sample_fields, samples)
-    _csv(output / 'measured_model.csv', (*MODEL_FIELDS, *extra_fields), summaries)
-    _csv(output / 'correctness.csv', ('n', 'layout', 'P', 'c', 'H', 'repeat', 'max_abs_error', 'frobenius_relative_error'), correctness)
+    write_csv(output / 'samples.csv', sample_fields, samples)
+    write_csv(output / 'measured_model.csv', (*MODEL_FIELDS, *extra_fields), summaries)
+    write_csv(output / 'correctness.csv', ('n', 'layout', 'P', 'c', 'H', 'repeat', 'max_abs_error', 'frobenius_relative_error'), correctness)
     _plot_residuals(summaries, output)
     settings = asdict(config)
     settings['data_dir'], settings['output_dir'] = str(config.data_dir), str(output)
     artifacts = {p.name: sha256(p.read_bytes()).hexdigest() for p in output.iterdir() if p.is_file()}
-    _write_json(output / 'manifest.json', dict(schema=1, settings=settings, git=source_revision(),
+    write_json(output / 'manifest.json', dict(schema=1, settings=settings, git=source_revision(),
         environment_before=before, environment_after=_environment(cores), artifacts_sha256=artifacts,
         trace_manifest_sha256=sha256((trace_dir / 'manifest.json').read_bytes()).hexdigest(),
         traces=traces, executed_configurations=len(modules) * len(config.sizes),

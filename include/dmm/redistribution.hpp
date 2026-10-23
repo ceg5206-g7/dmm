@@ -1,11 +1,8 @@
 #pragma once
-
+#include "dmm/matmul.hpp"
 #include <cmath>
-#include <cstddef>
-#include <stdexcept>
 
 namespace dmm {
-
 // Grid contract for 2D/2.5D: P = c*q*q and c divides q.
 inline std::size_t grid_size(std::size_t P, std::size_t c = 1) {
     if (P == 0 || c == 0 || P % c != 0)
@@ -17,4 +14,9 @@ inline std::size_t grid_size(std::size_t P, std::size_t c = 1) {
     return q;
 }
 
+std::size_t padded_size(std::size_t original_size, std::size_t P);
+void add_rows_to_tiles(BspPlan&, const MatmulConfig&, std::span<const MatrixView> rows,
+                       std::span<const MatrixView> tiles, std::span<const MatrixView> scratch = {});
+void add_tiles_to_rows(BspPlan&, const MatmulConfig&, std::span<const MatrixView> tiles,
+                       std::span<const MatrixView> rows, std::span<const MatrixView> scratch = {});
 } // namespace dmm

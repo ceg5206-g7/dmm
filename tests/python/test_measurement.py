@@ -10,7 +10,7 @@ from dmm.analysis import timing_statistics
 from dmm.config import DatasetConfig, MeasurementConfig, load_measurement_config
 from dmm.datasets import generate_dataset
 from dmm.measurement import run_measurement
-from dmm.model import validate_trace_record
+from dmm.trace import validate_trace_record
 
 
 @pytest.fixture
@@ -55,7 +55,8 @@ def test_real_calibration_frozen_across_heldout_sizes_and_reproducible_csv(confi
         trace = json.loads((output / 'traces' / item['name']).read_text())
         validate_trace_record(trace)
     from dmm.config import ModelConfig
-    from dmm.model import load_traces, build_model_tables
+    from dmm.model import build_model_tables
+    from dmm.trace import load_traces
     model_config = ModelConfig(config.data_dir, output / 'offline', config.cases, config.sizes)
     records = load_traces(output / 'traces', model_config)
     assert len(records) == 2

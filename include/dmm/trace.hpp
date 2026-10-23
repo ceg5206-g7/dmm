@@ -1,24 +1,27 @@
 #pragma once
-
-#include "dmm/algorithm.hpp"
-#include "dmm/execution.hpp"
-#include <concepts>
+#include <array>
 #include <cstddef>
-#include <functional>
-#include <optional>
-#include <span>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace dmm {
+enum class Phase { InputConversion, Skew, Replication, Multiply, Reduction, OutputConversion };
+inline constexpr std::array<const char*, 6> PHASE_NAMES{"input_conversion", "skew",      "replication",
+                                                        "multiply",         "reduction", "output_conversion"};
+struct Timing {
+    double total = 0, compute = 0, copy = 0, synchronization = 0;
+};
+struct RunTimings {
+    Timing end_to_end;
+    std::array<Timing, 6> phases{};
+};
 
 struct ElementRegion {
     std::size_t row, col, rows, cols;
 };
 
 struct ProductRegion {
-    std::size_t i, k, j; // Uniform block indices, not scalar offsets.
+    std::size_t i, k, j;     // Uniform block indices, not scalar offsets.
     std::size_t m, n, inner; // Actual GEMM dimensions.
 };
 struct ProductRecord {
@@ -29,10 +32,10 @@ struct CoverageGrid {
     std::size_t row_parts = 0, inner_parts = 0, col_parts = 0;
 };
 
-// Payloads are counted in FP32 words; a multiply-add counts as two FLOPs.
+// One logical message; regions follow the payload component order.
 struct MessageRecord {
-    std::size_t source, destination, tag, words;
-    std::optional<ElementRegion> region;
+    std::size_t source = 0, destination = 0, words = 0;
+    std::vector<ElementRegion> regions;
 };
 
 struct SuperstepRecord {
@@ -75,16 +78,5 @@ struct CostParameters {
 
 // T = w * critical_flops + g * critical_words + l * supersteps.
 double bsp_cost(const Counts& counts, const CostParameters& parameters);
-
-struct Traced {
-    Matrix<float> product;
-    Trace trace;
-};
-
-template <typename T>
-concept TracedAlgorithm = Algorithm<T> &&
-    requires(const T& algorithm, const Matrix<float>& a, const Matrix<float>& b, Executor& executor) {
-        { algorithm.run(a, b, executor) } -> std::same_as<Traced>;
-    };
 
 } // namespace dmm

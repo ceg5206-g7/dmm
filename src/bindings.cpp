@@ -1,7 +1,7 @@
-#include "dmm/cannon.hpp"
+#include "dmm/algorithms.hpp"
 #include "dmm/calibration.hpp"
-#include "dmm/sharding.hpp"
-#include "dmm/coverage.hpp"
+#include "dmm/redistribution.hpp"
+#include "dmm/validation.hpp"
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -46,16 +46,9 @@ std::size_t positive_integer(const py::object& value, const char* name) {
     return number;
 }
 
-dmm::PlanBuilder builder(const std::string& layout) {
-    if (layout == "cannon") return dmm::build_cannon;
-    if (layout == "ring" || layout == "2.5d")
-        throw std::invalid_argument("Layout " + layout + " is not implemented");
-    throw std::invalid_argument("unknown layout: " + layout);
-}
-
 std::unique_ptr<dmm::PreparedMatmul> prepare(const Array& a, const Array& b,
         const std::string& layout, const py::object& P, const py::object& c) {
-    const auto build = builder(layout);
+    const auto build = dmm::select_builder(layout);
     const auto nodes = positive_integer(P, "P"), copies = positive_integer(c, "c");
     return std::make_unique<dmm::PreparedMatmul>(copy_input(a), copy_input(b), nodes, copies, build);
 }
@@ -166,9 +159,8 @@ PYBIND11_MODULE(_native, module) {
     py::class_<dmm::MessageRecord>(module, "MessageRecord")
         .def_readonly("source", &dmm::MessageRecord::source)
         .def_readonly("destination", &dmm::MessageRecord::destination)
-        .def_readonly("tag", &dmm::MessageRecord::tag)
         .def_readonly("words", &dmm::MessageRecord::words)
-        .def_readonly("region", &dmm::MessageRecord::region);
+        .def_readonly("regions", &dmm::MessageRecord::regions);
     py::class_<dmm::SuperstepRecord>(module, "SuperstepRecord")
         .def_readonly("label", &dmm::SuperstepRecord::label)
         .def_readonly("flops", &dmm::SuperstepRecord::flops)

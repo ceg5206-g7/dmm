@@ -1,13 +1,11 @@
 #include "dmm/matmul.hpp"
-#include "dmm/sharding.hpp"
-#include <algorithm>
+#include "dmm/redistribution.hpp"
 #include <cmath>
 
 namespace dmm {
-
 PreparedMatmul::PreparedMatmul(Matrix<float> a, Matrix<float> b, std::size_t P, std::size_t c,
                                PlanBuilder build)
-    : a_(std::move(a)), b_(std::move(b)), layout_{padded_size(a_.size, P), P, c, {}, {}, {}}, plan_(P) {
+    : a_(std::move(a)), b_(std::move(b)), config_{padded_size(a_.size, P), P, c}, plan_(P) {
     if (!c || !build || a_.size != b_.size || a_.values.size() != detail::elements<float>(a_.size) ||
         b_.values.size() != detail::elements<float>(b_.size))
         throw std::invalid_argument("invalid matrix inputs, replication or builder");
@@ -15,45 +13,54 @@ PreparedMatmul::PreparedMatmul(Matrix<float> a, Matrix<float> b, std::size_t P, 
         for (auto value : input->values)
             if (!std::isfinite(value))
                 throw std::invalid_argument("inputs must be finite");
-    build(plan_, layout_);
-    const auto words = layout_.n * (layout_.n / P);
-    for (const auto* ids : {&layout_.a, &layout_.b, &layout_.result}) {
-        if (ids->size() != P)
-            throw std::invalid_argument("builder must provide one row buffer per node");
-        for (std::size_t node = 0; node < P; ++node)
-            if (!plan_.owns(node, (*ids)[node]) || plan_.buffer((*ids)[node]).size() < words)
-                throw std::invalid_argument("builder row buffers have wrong owner or capacity");
+    definition_ = build(plan_, config_);
+    const auto height = config_.padded_size / P;
+    for (const auto* views :
+         {&definition_.input_a_rows, &definition_.input_b_rows, &definition_.output_c_rows}) {
+        if (views->size() != P)
+            throw std::invalid_argument("builder must bind one row view per node");
+        for (std::size_t node = 0; node < P; ++node) {
+            const auto view = (*views)[node];
+            if (plan_.owner(view) != node || view.rows != height || view.cols != config_.padded_size)
+                throw std::invalid_argument("builder row views have wrong owner or shape");
+        }
     }
-    // Inputs are independently restored; aliasing them or the output would destroy input data.
-    for (std::size_t node = 0; node < P; ++node)
-        if (layout_.a[node] == layout_.b[node] || layout_.a[node] == layout_.result[node] ||
-            layout_.b[node] == layout_.result[node])
-            throw std::invalid_argument("row inputs and output must be distinct");
-    plan_.seal(a_.size, layout_.n, layout_.coverage);
-}
-RunTimings PreparedMatmul::run_into(std::span<float> output, Executor& executor) {
-    std::lock_guard lock(mutex_);
-    return execute_into(output, executor);
+    for (std::size_t node = 0; node < P; ++node) {
+        const auto a_id = definition_.input_a_rows[node].buffer, b_id = definition_.input_b_rows[node].buffer,
+                   c_id = definition_.output_c_rows[node].buffer;
+        if (a_id == b_id || a_id == c_id || b_id == c_id)
+            throw std::invalid_argument("input/output row buffers must be distinct");
+    }
+    plan_.finalize(a_.size, config_.padded_size, definition_.product_grid);
 }
 RunTimings PreparedMatmul::execute_into(std::span<float> output, Executor& executor) {
     if (output.size() != a_.values.size())
         throw std::invalid_argument("prepared output size mismatch");
-    const auto n = layout_.n, height = n / layout_.P;
-    for (std::size_t node = 0; node < layout_.P; ++node)
-        for (auto pair : {std::pair{&a_, layout_.a[node]}, std::pair{&b_, layout_.b[node]}}) {
-            auto data = plan_.buffer(pair.second);
-            std::fill(data.begin(), data.end(), 0.f);
-            for (std::size_t row = 0; row < height && node * height + row < a_.size; ++row)
-                std::copy_n(pair.first->values.data() + (node * height + row) * a_.size, a_.size,
-                            data.data() + row * n);
+    const auto height = config_.padded_size / config_.P;
+    for (std::size_t node = 0; node < config_.P; ++node)
+        for (auto pair : {std::pair{&a_, definition_.input_a_rows[node]},
+                          std::pair{&b_, definition_.input_b_rows[node]}}) {
+            auto data = plan_.buffer(pair.second.buffer).subspan(pair.second.offset);
+            for (std::size_t row = 0; row < height; ++row) {
+                std::fill_n(data.data() + row * pair.second.stride, pair.second.cols, 0.f);
+                if (node * height + row < a_.size)
+                    std::copy_n(pair.first->values.data() + (node * height + row) * a_.size, a_.size,
+                                data.data() + row * pair.second.stride);
+            }
         }
     auto timing = plan_.execute(executor);
-    for (std::size_t node = 0; node < layout_.P; ++node) {
-        auto data = plan_.buffer(layout_.result[node]);
+    for (std::size_t node = 0; node < config_.P; ++node) {
+        const auto view = definition_.output_c_rows[node];
+        auto data = plan_.buffer(view.buffer).subspan(view.offset);
         for (std::size_t row = 0; row < height && node * height + row < a_.size; ++row)
-            std::copy_n(data.data() + row * n, a_.size, output.data() + (node * height + row) * a_.size);
+            std::copy_n(data.data() + row * view.stride, a_.size,
+                        output.data() + (node * height + row) * a_.size);
     }
     return timing;
+}
+RunTimings PreparedMatmul::run_into(std::span<float> output, Executor& executor) {
+    std::lock_guard lock(mutex_);
+    return execute_into(output, executor);
 }
 Trace PreparedMatmul::trace() const {
     std::lock_guard lock(mutex_);

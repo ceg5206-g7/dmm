@@ -11,8 +11,8 @@ import yaml
 from dmm.algorithms import cannon
 from dmm.config import DatasetConfig, ModelConfig, load_model_config
 from dmm.datasets import generate_dataset
-from dmm.model import (build_model_tables, capture_traces, load_traces, run_model,
-                       trace_record, validate_trace_record, _winner)
+from dmm.model import build_model_tables, capture_traces, run_model, _winner
+from dmm.trace import load_traces, trace_record, validate_trace_record
 from dmm.execution import SerialExecutor
 
 
@@ -186,3 +186,77 @@ def test_manifest_structure_and_requested_execution_identity_are_checked(config)
         (root / "manifest.json").write_text(json.dumps(manifest))
         with pytest.raises(ValueError):
             load_traces(root, config)
+
+
+def test_schema_two_serializes_ordered_regions_and_one_message_per_pair():
+    record = _record()
+    assert record['schema'] == 2
+    for step in record['supersteps']:
+        assert len({(m['source'], m['destination']) for m in step['messages']}) == len(step['messages'])
+        for msg in step['messages']:
+            assert 'tag' not in msg and 'region' not in msg
+            assert sum(r[2] * r[3] for r in msg['regions']) == msg['words']
+    original = validate_trace_record(record)
+    msg = next(m for s in record['supersteps'] for m in s['messages'] if m['regions'][0][3] >= 2)
+    row, col, height, width = msg['regions'][0]
+    msg['regions'] = [[row, col, height, 1], [row, col + 1, height, width - 1]]
+    assert validate_trace_record(record) == original
+
+
+@pytest.mark.parametrize('failure', ['empty', 'missing', 'zero', 'shape', 'outside', 'duplicate_with_tag'])
+def test_schema_two_rejects_invalid_component_regions_and_duplicate_pairs(failure):
+    record = _record()
+    step = next(s for s in record['supersteps'] if s['messages'])
+    msg = step['messages'][0]
+    if failure == 'empty':
+        msg['regions'] = []
+    elif failure == 'missing':
+        del msg['regions']
+    elif failure == 'zero':
+        msg['regions'][0][2] = 0
+    elif failure == 'shape':
+        msg['regions'][0][3] += 1
+    elif failure == 'outside':
+        msg['regions'][0][0] = record['n_padded']
+    else:
+        duplicate = copy.deepcopy(msg)
+        duplicate['tag'] = 999
+        step['messages'].append(duplicate)
+    with pytest.raises(ValueError):
+        validate_trace_record(record)
+
+
+def test_real_legacy_schema_one_capture_replays_without_inputs_or_algorithm(tmp_path, monkeypatch):
+    from hashlib import sha256
+    import dmm.model as model
+
+    fixture = Path(__file__).parents[1] / 'fixtures/trace_v1_cannon.json'
+    raw = fixture.read_bytes()
+    legacy = json.loads(raw)
+    assert legacy['schema'] == 1
+    metrics = validate_trace_record(legacy)
+    assert metrics['native']['F_total'] == 2 * 4 ** 3
+    assert metrics['native']['messages'] == 12
+    assert metrics['end_to_end']['S'] == 9
+    root = tmp_path / 'legacy'
+    root.mkdir()
+    name = 'n4_cannon_P4_c1.json'
+    (root / name).write_bytes(raw)
+    (root / 'correctness.csv').write_text('saved historical summary\n')
+    cfg = ModelConfig(tmp_path / 'missing-inputs', tmp_path / 'report',
+                      [dict(layout='cannon', P=4, c=1)], [4], gammas=[10], lambdas=[100], budgets=[32])
+    (root / 'manifest.json').write_text(json.dumps(dict(schema=1,
+        settings=dict(cases=cfg.cases, sizes=cfg.sizes, workers=cfg.workers, group=cfg.group),
+        files=[dict(name=name, sha256=sha256(raw).hexdigest())],
+        correctness_sha256=sha256((root / 'correctness.csv').read_bytes()).hexdigest())))
+    def forbidden(*args, **kwargs):
+        pytest.fail('legacy replay must use saved trace only')
+    monkeypatch.setattr(model, 'load_pair', forbidden)
+    monkeypatch.setattr(cannon, 'matmul_traced', forbidden)
+    assert load_traces(root, cfg) == [(legacy, metrics)]
+    run_model(cfg, root)
+    with (cfg.output_dir / 'model.csv').open() as f:
+        row = next(csv.DictReader(f))
+    assert int(row['F_total']) == 128
+    assert float(row['T_model']) == metrics['end_to_end']['W_crit'] + 10 * metrics['end_to_end']['C_crit'] + 100 * metrics['end_to_end']['S']
+    assert fixture.read_bytes() == raw

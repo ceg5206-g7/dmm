@@ -3,7 +3,7 @@
 import numpy as np
 
 from dmm import _native
-from dmm.bsp import Trace
+from dmm.trace import Trace
 from dmm.config import validate_case
 from dmm.execution import Executor
 

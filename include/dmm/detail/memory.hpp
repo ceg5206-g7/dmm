@@ -27,12 +27,11 @@ struct MemoryLedger {
 // Move-only node-owned payload. Allocated FP32 slots (including retained storage)
 // are counted, not container metadata. The ledger outlives its BSP if necessary.
 class Buffer {
-public:
+  public:
     Buffer() = default;
     Buffer(const Buffer&) = delete;
     Buffer& operator=(const Buffer&) = delete;
-    Buffer(Buffer&& other) noexcept
-        : ledger_(std::move(other.ledger_)), values_(std::move(other.values_)) {}
+    Buffer(Buffer&& other) noexcept : ledger_(std::move(other.ledger_)), values_(std::move(other.values_)) {}
     Buffer& operator=(Buffer&& other) noexcept {
         if (this != &other) {
             release();
@@ -53,11 +52,16 @@ public:
     float& operator[](std::size_t i) noexcept { return values_[i]; }
     const float& operator[](std::size_t i) const noexcept { return values_[i]; }
 
-private:
+  private:
     friend class BspPlan;
     Buffer(std::shared_ptr<detail::MemoryLedger> ledger, std::vector<float> values)
-        : ledger_(std::move(ledger)), values_(std::move(values)) { ledger_->acquire(values_.capacity()); }
-    void release() noexcept { if (ledger_) ledger_->release(values_.capacity()); }
+        : ledger_(std::move(ledger)), values_(std::move(values)) {
+        ledger_->acquire(values_.capacity());
+    }
+    void release() noexcept {
+        if (ledger_)
+            ledger_->release(values_.capacity());
+    }
     void rebind(const std::shared_ptr<detail::MemoryLedger>& ledger) {
         ledger->acquire(values_.capacity());
         release();

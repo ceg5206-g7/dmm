@@ -1,21 +1,22 @@
 #pragma once
-
-#include "dmm/bsp_plan.hpp"
+#include "dmm/matrix.hpp"
+#include "dmm/plan.hpp"
 #include <mutex>
 
 namespace dmm {
-
-// Builder output: node-owned buffers start and finish as common row shards.
-// Their capacity may be larger so an algorithm can reuse them as local tiles.
-struct MatmulLayout {
-    const std::size_t n, P, c;
-    std::vector<std::size_t> a, b, result;
-    CoverageGrid coverage{};
+struct MatmulConfig {
+    std::size_t padded_size, P, c;
 };
-using PlanBuilder = void (*)(BspPlan&, MatmulLayout&);
+struct MatmulDefinition {
+    std::vector<MatrixView> input_a_rows, input_b_rows, output_c_rows;
+    CoverageGrid product_grid{};
+};
+using PlanBuilder = MatmulDefinition (*)(BspPlan&, const MatmulConfig&);
+struct Traced {
+    Matrix<float> product;
+    Trace trace;
+};
 
-// One lifecycle for every layout. A builder only allocates buffers and appends
-// operations; host reset/gather, locking and timing boundaries live here.
 class PreparedMatmul {
   public:
     PreparedMatmul(Matrix<float> a, Matrix<float> b, std::size_t P, std::size_t c, PlanBuilder build);
@@ -27,9 +28,9 @@ class PreparedMatmul {
   private:
     RunTimings execute_into(std::span<float> output, Executor& executor);
     Matrix<float> a_, b_;
-    MatmulLayout layout_;
+    const MatmulConfig config_;
     BspPlan plan_;
+    MatmulDefinition definition_;
     mutable std::mutex mutex_;
 };
-
 } // namespace dmm

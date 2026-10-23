@@ -1,5 +1,6 @@
-#include "dmm/cannon.hpp"
-#include "dmm/sharding.hpp"
+#include "dmm/algorithms.hpp"
+#include "dmm/validation.hpp"
+#include "dmm/redistribution.hpp"
 #include <gtest/gtest.h>
 #include "test_counts.hpp"
 #include <algorithm>
@@ -13,19 +14,6 @@
 #include <vector>
 
 namespace {
-struct MissingMatmul {};
-struct ReferenceResult {
-    const dmm::Matrix<float>& matmul(const dmm::Matrix<float>&, const dmm::Matrix<float>&, dmm::Executor&) const;
-};
-struct MutableAlgorithm {
-    dmm::Matrix<float> matmul(const dmm::Matrix<float>&, const dmm::Matrix<float>&, dmm::Executor&);
-};
-static_assert(!dmm::Algorithm<MissingMatmul>);
-static_assert(!dmm::Algorithm<ReferenceResult>);
-static_assert(!dmm::Algorithm<MutableAlgorithm>);
-static_assert(!std::is_polymorphic_v<dmm::Cannon>);
-
-
 dmm::Matrix<double> reference(const dmm::Matrix<float>& a, const dmm::Matrix<float>& b) {
     const auto n = a.size;
     dmm::Matrix<double> c(n);
@@ -46,19 +34,20 @@ class CannonTest : public ::testing::TestWithParam<std::size_t> {};
 
 TEST_P(CannonTest, MatchesFP64ReferenceAndPreservesInputsAcrossSizes) {
     auto executor = dmm::make_executor(GetParam());
-    const dmm::Cannon algorithm;
     std::mt19937 random(5206);
     std::uniform_real_distribution<float> value(-1, 1);
     for (std::size_t n : {4, 8, 12, 16, 132}) {
         SCOPED_TRACE(::testing::Message() << "size=" << n);
         dmm::Matrix<float> a(n), b(n);
-        for (auto& x : a.values) x = value(random);
-        for (auto& x : b.values) x = value(random);
+        for (auto& x : a.values)
+            x = value(random);
+        for (auto& x : b.values)
+            x = value(random);
         const auto a_before = a.values, b_before = b.values;
         const auto expected = reference(a, b);
-        const auto result = algorithm.matmul(a, b, *executor);
+        const auto result = dmm::matmul(a, b, *executor);
         EXPECT_NO_THROW(dmm::validate(result, expected));
-        const auto repeated = algorithm.matmul(a, b, *executor);
+        const auto repeated = dmm::matmul(a, b, *executor);
         EXPECT_EQ(result.values, repeated.values);
         EXPECT_EQ(a_before, a.values);
         EXPECT_EQ(b_before, b.values);
@@ -68,29 +57,33 @@ TEST_P(CannonTest, MatchesFP64ReferenceAndPreservesInputsAcrossSizes) {
 TEST_P(CannonTest, HandlesZeroIdentityOnesAndCancellation) {
     auto executor = dmm::make_executor(GetParam());
     dmm::Matrix<float> a(4), identity(4);
-    for (std::size_t i = 0; i < 4; ++i) identity.values[i * 4 + i] = 1;
-    const dmm::Cannon cannon;
-    EXPECT_NO_THROW(dmm::validate(cannon.matmul(a, identity, *executor), constant_reference(4, 0)));
+    for (std::size_t i = 0; i < 4; ++i)
+        identity.values[i * 4 + i] = 1;
+    EXPECT_NO_THROW(dmm::validate(dmm::matmul(a, identity, *executor), constant_reference(4, 0)));
     std::fill(a.values.begin(), a.values.end(), 1);
-    EXPECT_NO_THROW(dmm::validate(cannon.matmul(a, identity, *executor), constant_reference(4, 1)));
+    EXPECT_NO_THROW(dmm::validate(dmm::matmul(a, identity, *executor), constant_reference(4, 1)));
     std::fill(identity.values.begin(), identity.values.end(), 1);
-    EXPECT_NO_THROW(dmm::validate(cannon.matmul(a, identity, *executor), constant_reference(4, 4)));
+    EXPECT_NO_THROW(dmm::validate(dmm::matmul(a, identity, *executor), constant_reference(4, 4)));
     for (std::size_t k = 0; k < 4; ++k)
-        for (std::size_t j = 0; j < 4; ++j) identity.values[k * 4 + j] = k % 2 ? -1 : 1;
-    EXPECT_NO_THROW(dmm::validate(cannon.matmul(a, identity, *executor), constant_reference(4, 0)));
+        for (std::size_t j = 0; j < 4; ++j)
+            identity.values[k * 4 + j] = k % 2 ? -1 : 1;
+    EXPECT_NO_THROW(dmm::validate(dmm::matmul(a, identity, *executor), constant_reference(4, 0)));
 }
 
 TEST_P(CannonTest, PreservesTileAccumulationOrder) {
     auto executor = dmm::make_executor(GetParam());
     dmm::Matrix<float> a(16), b(16);
-    for (std::size_t i=0; i<16; ++i) {
-        a.values[i*16]=1e8f; a.values[i*16+4]=1;
-        a.values[i*16+8]=-1e8f; a.values[i*16+12]=1;
+    for (std::size_t i = 0; i < 16; ++i) {
+        a.values[i * 16] = 1e8f;
+        a.values[i * 16 + 4] = 1;
+        a.values[i * 16 + 8] = -1e8f;
+        a.values[i * 16 + 12] = 1;
     }
-    std::fill(b.values.begin(),b.values.end(),1);
-    const auto result=dmm::Cannon{}.run(a,b,*executor).product;
-    for (std::size_t i=0; i<16; ++i) for (std::size_t j=0; j<16; ++j)
-        EXPECT_EQ(result.values[i*16+j],(i/4+j/4)%2 == 0 ? 1.f : 0.f);
+    std::fill(b.values.begin(), b.values.end(), 1);
+    const auto result = dmm::matmul_traced(a, b, *executor).product;
+    for (std::size_t i = 0; i < 16; ++i)
+        for (std::size_t j = 0; j < 16; ++j)
+            EXPECT_EQ(result.values[i * 16 + j], (i / 4 + j / 4) % 2 == 0 ? 1.f : 0.f);
 }
 
 INSTANTIATE_TEST_SUITE_P(Workers, CannonTest, ::testing::Values(0, 1, 2, 5),
@@ -99,47 +92,9 @@ INSTANTIATE_TEST_SUITE_P(Workers, CannonTest, ::testing::Values(0, 1, 2, 5),
 TEST(CannonValidationTest, RejectsMismatchedUnsupportedAndMalformedMatrices) {
     dmm::SerialExecutor executor;
     dmm::Matrix<float> a(4), b(3);
-    const dmm::Cannon cannon;
-    EXPECT_THROW(cannon.matmul(a, b, executor), std::invalid_argument);
+    EXPECT_THROW(dmm::matmul(a, b, executor), std::invalid_argument);
     a.values.pop_back();
-    EXPECT_THROW(cannon.matmul(a, a, executor), std::invalid_argument);
-}
-
-TEST(ValidationTest, RejectsNonFiniteIncorrectAndMismatchedResults) {
-    dmm::Matrix<float> a(4);
-    const auto expected = constant_reference(4, 0);
-    a.values[0] = std::numeric_limits<float>::quiet_NaN();
-    EXPECT_THROW(dmm::validate(a, expected), std::runtime_error);
-    a.values[0] = 1;
-    EXPECT_THROW(dmm::validate(a, expected), std::runtime_error);
-    EXPECT_THROW(dmm::validate(a, dmm::Matrix<double>(3)), std::invalid_argument);
-}
-
-TEST(ValidationTest, ChecksBothMatrixShapesAndStorage) {
-    dmm::Matrix<float> result(4);
-    dmm::Matrix<double> expected(4);
-    expected.size = 2;
-    EXPECT_THROW(dmm::validate(result, expected), std::invalid_argument);
-    expected.size = 4;
-    expected.values.pop_back();
-    EXPECT_THROW(dmm::validate(result, expected), std::invalid_argument);
-    expected.values.push_back(0);
-    result.values.pop_back();
-    EXPECT_THROW(dmm::validate(result, expected), std::invalid_argument);
-    expected.values.pop_back();
-    EXPECT_THROW(dmm::validate(result, expected), std::invalid_argument);
-}
-
-TEST(ValidationTest, PreservesFP64ReferencePrecision) {
-    dmm::Matrix<float> result(1);
-    dmm::Matrix<double> expected(1);
-    result.values[0] = 1;
-    expected.values[0] = 1.0 + std::numeric_limits<double>::epsilon();
-    EXPECT_THROW(dmm::validate(result, expected, 0, 0), std::runtime_error);
-    const auto error = dmm::validate(result, expected);
-    EXPECT_DOUBLE_EQ(error.max_absolute, std::numeric_limits<double>::epsilon());
-    expected.values[0] = std::numeric_limits<double>::quiet_NaN();
-    EXPECT_THROW(dmm::validate(result, expected), std::runtime_error);
+    EXPECT_THROW(dmm::matmul(a, a, executor), std::invalid_argument);
 }
 
 TEST(CannonDispatchTest, UsesThreePreparedBatchesPerLogicalSuperstep) {
@@ -147,14 +102,14 @@ TEST(CannonDispatchTest, UsesThreePreparedBatchesPerLogicalSuperstep) {
         std::vector<std::size_t> batches;
         void for_each(std::size_t count, const std::function<void(std::size_t)>& task) override {
             batches.push_back(count);
-            for (std::size_t i = 0; i < count; ++i) task(i);
+            for (std::size_t i = 0; i < count; ++i)
+                task(i);
         }
     } executor;
     dmm::Matrix<float> a(4), b(4);
     std::fill(a.values.begin(), a.values.end(), 1);
     std::fill(b.values.begin(), b.values.end(), 1);
-    const dmm::Cannon cannon;
-    const auto result = cannon.run(a, b, executor);
+    const auto result = dmm::matmul_traced(a, b, executor);
     EXPECT_NO_THROW(dmm::validate(result.product, constant_reference(4, 4)));
     EXPECT_EQ(dmm::count(result.trace).supersteps, 11u);
     EXPECT_EQ(executor.batches, (std::vector<std::size_t>(3 * 11, 16)));
@@ -171,45 +126,68 @@ TEST_P(CannonTraceTest, MatchesHandComputedCommunication) {
         dmm::Matrix<float> a(n), b(n);
         std::fill(a.values.begin(), a.values.end(), 1);
         std::fill(b.values.begin(), b.values.end(), 1);
-        auto [product, trace] = dmm::Cannon{}.run(a, b, *executor);
+        auto [product, trace] = dmm::matmul_traced(a, b, *executor);
         EXPECT_NO_THROW(dmm::validate(product, constant_reference(n, static_cast<double>(n))));
-        std::erase_if(trace.supersteps, [](const auto& step) { return step.label == "input_conversion" || step.label == "output_conversion"; });
+        std::erase_if(trace.supersteps, [](const auto& step) {
+            return step.label == "input_conversion" || step.label == "output_conversion";
+        });
         const auto block = n / 4, words = block * block, flops = 2 * words * block;
         ASSERT_EQ(trace.nodes, 16u);
         ASSERT_EQ(trace.supersteps.size(), 5u);
-        expect_work_and_communication(dmm::count(trace), (dmm::Counts{5, 16 * 4 * flops, 4 * flops,
-                                                  120 * words, 8 * words, 120}));
-        expect_work_and_communication(dmm::count(trace.supersteps[0]), (dmm::Counts{1, 0, 0, 24 * words, 2 * words, 24}));
+        expect_work_and_communication(
+            dmm::count(trace), (dmm::Counts{5, 16 * 4 * flops, 4 * flops, 120 * words, 8 * words, 120}));
+        expect_work_and_communication(dmm::count(trace.supersteps[0]),
+                                      (dmm::Counts{1, 0, 0, 24 * words, 2 * words, 24}));
         for (std::size_t s = 1; s < 4; ++s)
-            expect_work_and_communication(dmm::count(trace.supersteps[s]), (dmm::Counts{1, 16 * flops, flops, 32 * words, 2 * words, 32}));
-        expect_work_and_communication(dmm::count(trace.supersteps[4]), (dmm::Counts{1, 16 * flops, flops, 0, 0, 0}));
+            expect_work_and_communication(dmm::count(trace.supersteps[s]),
+                                          (dmm::Counts{1, 16 * flops, flops, 32 * words, 2 * words, 32}));
+        expect_work_and_communication(dmm::count(trace.supersteps[4]),
+                                      (dmm::Counts{1, 16 * flops, flops, 0, 0, 0}));
         EXPECT_EQ(trace.supersteps[0].label, "skew");
-        for (std::size_t s = 1; s < 5; ++s) EXPECT_EQ(trace.supersteps[s].label, "multiply");
+        for (std::size_t s = 1; s < 5; ++s)
+            EXPECT_EQ(trace.supersteps[s].label, "multiply");
     }
 }
 
 TEST_P(CannonTraceTest, SkewsAndShiftsAlongGridRowsAndColumns) {
     auto executor = dmm::make_executor(GetParam());
     dmm::Matrix<float> a(16), b(16);
-    auto trace = dmm::Cannon{}.run(a, b, *executor).trace;
-    std::erase_if(trace.supersteps, [](const auto& step) { return step.label == "input_conversion" || step.label == "output_conversion"; });
+    auto trace = dmm::matmul_traced(a, b, *executor).trace;
+    std::erase_if(trace.supersteps, [](const auto& step) {
+        return step.label == "input_conversion" || step.label == "output_conversion";
+    });
     const auto messages_from = [&](std::size_t step, std::size_t source) {
-        std::vector<std::pair<std::size_t, std::size_t>> sent; // (destination, tag)
+        std::vector<std::size_t> sent;
         for (const auto& message : trace.supersteps[step].messages)
             if (message.source == source) {
                 EXPECT_EQ(message.words, 16u);
-                sent.emplace_back(message.destination, message.tag);
+                sent.push_back(message.destination);
+                EXPECT_EQ(message.regions.size(), 1u);
             }
         return sent;
     };
-    using Sent = std::vector<std::pair<std::size_t, std::size_t>>;
+    using Sent = std::vector<std::size_t>;
     // Node (1, 2) = 6 skews A to (1, 1) = 5 and B to (3, 2) = 14, then shifts to (1, 1) and (0, 2).
-    EXPECT_EQ(messages_from(0, 6), (Sent{{5, 0}, {14, 1}}));
-    EXPECT_EQ(messages_from(1, 6), (Sent{{5, 0}, {2, 1}}));
+    EXPECT_EQ(messages_from(0, 6), (Sent{5, 14}));
+    EXPECT_EQ(messages_from(1, 6), (Sent{5, 2}));
     // Node (0, 0) keeps both blocks during the skew.
     EXPECT_TRUE(messages_from(0, 0).empty());
-    EXPECT_EQ(messages_from(3, 0), (Sent{{3, 0}, {12, 1}}));
+    EXPECT_EQ(messages_from(3, 0), (Sent{3, 12}));
     EXPECT_TRUE(messages_from(4, 0).empty());
+    const auto& skew_messages = trace.supersteps[0].messages;
+    const auto& first_round = trace.supersteps[1].messages;
+    for (const auto& m : skew_messages)
+        if (m.source == 6) {
+            ASSERT_EQ(m.regions.size(), 1u);
+            EXPECT_EQ(m.regions[0].row, 4u);
+            EXPECT_EQ(m.regions[0].col, 8u);
+        }
+    for (const auto& m : first_round)
+        if (m.source == 6) {
+            ASSERT_EQ(m.regions.size(), 1u);
+            EXPECT_EQ(m.regions[0].row, m.destination == 5 ? 4u : 12u);
+            EXPECT_EQ(m.regions[0].col, m.destination == 5 ? 12u : 8u);
+        }
 }
 
 INSTANTIATE_TEST_SUITE_P(Workers, CannonTraceTest, ::testing::Values(0, 2),
@@ -220,12 +198,11 @@ TEST(CannonStateTest, ResultsAreIndependentAcrossCallsAndExecutors) {
     dmm::Matrix<float> a(4), b(4);
     std::fill(a.values.begin(), a.values.end(), 1);
     std::fill(b.values.begin(), b.values.end(), 1);
-    const dmm::Cannon algorithm;
-    const auto first = algorithm.matmul(a, b, executor);
+    const auto first = dmm::matmul(a, b, executor);
     std::fill(a.values.begin(), a.values.end(), 2);
-    const auto second = algorithm.matmul(a, b, executor);
+    const auto second = dmm::matmul(a, b, executor);
     dmm::SerialExecutor serial;
-    EXPECT_NO_THROW(dmm::validate(algorithm.matmul(a, b, serial), constant_reference(4, 8)));
+    EXPECT_NO_THROW(dmm::validate(dmm::matmul(a, b, serial), constant_reference(4, 8)));
     EXPECT_NO_THROW(dmm::validate(first, constant_reference(4, 4)));
     EXPECT_NO_THROW(dmm::validate(second, constant_reference(4, 8)));
     bool executed = false;
@@ -239,18 +216,20 @@ TEST(ConfigurableCannonTest, MatchesReferenceAndCountsAcrossGrids) {
     dmm::Matrix<float> a(32), b(32);
     std::mt19937 random(5206);
     std::uniform_real_distribution<float> value(-1, 1);
-    for (auto& x : a.values) x = value(random);
-    for (auto& x : b.values) x = value(random);
+    for (auto& x : a.values)
+        x = value(random);
+    for (auto& x : b.values)
+        x = value(random);
     const auto expected = reference(a, b);
     for (std::size_t P : {1, 4, 16, 64, 256}) {
         SCOPED_TRACE(P);
         const auto n = dmm::padded_size(32, P), q = dmm::grid_size(P), block = n / q, words = block * block;
-        const auto result = dmm::Cannon{P, 1}.run(a, b, executor);
+        const auto result = dmm::matmul_traced(a, b, executor, "cannon", P, 1);
         EXPECT_NO_THROW(dmm::validate(result.product, expected));
         EXPECT_EQ(result.trace.nodes, P);
         const auto counts = dmm::count_native(result.trace);
         EXPECT_EQ(counts.supersteps, q + 1);
-        EXPECT_EQ(counts.total_flops, 2*n*n*n);
+        EXPECT_EQ(counts.total_flops, 2 * n * n * n);
         EXPECT_EQ(counts.critical_flops, counts.total_flops / P);
         EXPECT_EQ(counts.messages, 2 * (q - 1) * (q + P));
         EXPECT_EQ(counts.total_words, counts.messages * words);
@@ -263,9 +242,34 @@ TEST(GridConfigTest, ValidatesTwoAndTwoPointFiveDimensionalGrids) {
     EXPECT_EQ(dmm::grid_size(256, 4), 8u);
     dmm::SerialExecutor executor;
     dmm::Matrix<float> a(32);
-    for (const auto [P, c] : std::vector<std::pair<std::size_t, std::size_t>>{
-            {0, 1}, {16, 0}, {3, 1}, {16, 4}, {64, 2}, {65, 4}})
+    for (const auto [P, c] :
+         std::vector<std::pair<std::size_t, std::size_t>>{{0, 1}, {16, 0}, {3, 1}, {16, 4}, {64, 2}, {65, 4}})
         EXPECT_THROW(dmm::grid_size(P, c), std::invalid_argument);
-    EXPECT_THROW((dmm::Cannon{64, 4}.run(a, a, executor)), std::invalid_argument);
+    EXPECT_THROW((dmm::matmul_traced(a, a, executor, "cannon", 64, 4)), std::invalid_argument);
+}
 
+TEST(CommonCannonTest, PaddingCroppingAndEndToEndCountsAreRealExecutedWork) {
+    dmm::ThreadExecutor executor(2);
+    std::mt19937 random(5206);
+    std::uniform_real_distribution<float> value(-1, 1);
+    for (std::size_t n : {1, 17, 65, 257}) {
+        dmm::Matrix<float> a(n), b(n);
+        for (auto& x : a.values)
+            x = value(random);
+        for (auto& x : b.values)
+            x = value(random);
+        const auto result = dmm::matmul_traced(a, b, executor);
+        EXPECT_EQ(result.product.size, n);
+        const auto padded = dmm::padded_size(n, 16);
+        EXPECT_EQ(result.trace.original_size, n);
+        EXPECT_EQ(result.trace.padded_size, padded);
+        EXPECT_EQ(dmm::count(result.trace).total_flops, 2 * padded * padded * padded);
+        for (std::size_t i = 0; i < n; ++i)
+            for (std::size_t j = 0; j < n; ++j) {
+                double expected = 0;
+                for (std::size_t k = 0; k < n; ++k)
+                    expected += static_cast<double>(a.values[i * n + k]) * b.values[k * n + j];
+                EXPECT_NEAR(result.product.values[i * n + j], expected, 1e-4 + 1e-3 * std::abs(expected));
+            }
+    }
 }

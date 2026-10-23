@@ -1,6 +1,6 @@
 #include "dmm/calibration.hpp"
-#include "dmm/algorithm.hpp"
-#include "dmm/gemm.hpp"
+#include "dmm/matrix.hpp"
+#include "dmm/detail/gemm.hpp"
 #include <algorithm>
 #include <atomic>
 #include <chrono>

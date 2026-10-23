@@ -73,8 +73,8 @@ def _trace_signature(trace):
         trace.nodes, trace.original_size, trace.padded_size,
         (coverage.row_parts, coverage.inner_parts, coverage.col_parts), tuple(trace.peak_words),
         [(step.label, tuple(step.flops), tuple(step.peak_words),
-          [(m.source, m.destination, m.tag, m.words,
-            None if m.region is None else (m.region.row, m.region.col, m.region.rows, m.region.cols))
+          [(m.source, m.destination, m.words,
+            tuple((r.row, r.col, r.rows, r.cols) for r in m.regions))
            for m in step.messages],
           [(p.node, p.product.i, p.product.k, p.product.j, p.product.m, p.product.n, p.product.inner)
            for p in step.products]) for step in trace.supersteps],

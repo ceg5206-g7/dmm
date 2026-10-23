@@ -122,28 +122,25 @@ persistent C++ threads, while the serial executor runs on the caller.
 
 On the C++ side, `Executor` is an abstract synchronous task interface with
 `SerialExecutor` and `ThreadExecutor` implementations. `make_executor(0)` selects
-serial execution; positive counts select a thread pool. `Cannon` receives an
+serial execution; positive counts select a thread pool. The common runtime receives an
 `Executor&` and does not depend on either implementation. Virtual dispatch occurs
 once per superstep batch, outside the scalar multiplication loops.
 
-`Algorithm<T>` is a C++20 concept checking that a const algorithm object can
-call `matmul(const Matrix<float>& A, const Matrix<float>& B, Executor& executor)`
-and return exactly `Matrix<float>` by value. `Cannon` is an ordinary stateless struct, checked with
-`static_assert(Algorithm<Cannon>)`; algorithms use no inheritance or virtual
-methods. Each call borrows A/B and the executor until it returns, and returns
-an independent matrix owned by the caller. The same algorithm object can be
-reused with different inputs and executors; earlier results stay unchanged.
-
-Cannon's schedule is the plain `build_cannon(BspPlan&,MatmulLayout&)` function
-in `src/cannon.cpp`. The shared `PreparedMatmul` owns inputs, padding,
-reset/execute/gather, locks and timing. Ordinary calls create it temporarily;
-`cannon.prepare` retains it. New layouts supply only a builder and thin Python
-forwarders, with no per-algorithm workspace class or second runtime. See the
+Cannon's schedule is the plain
+`MatmulDefinition build_cannon(BspPlan&, const MatmulConfig&)` function in
+`src/algorithms/cannon.cpp`. Configuration is immutable; the returned definition
+binds `input_a_rows`, `input_b_rows`, `output_c_rows` and `product_grid`. The shared
+`PreparedMatmul` owns input copies, padding, reset/execute/gather, locking and
+timing. Ordinary calls create it temporarily; `cannon.prepare` retains it.
+New layouts supply one builder and thin Python forwarders. See the
 [Cannon contribution walkthrough](doc/docs/contribute.md).
 
 ```cpp
-dmm::Cannon algorithm{64, 1}; // P, c; default construction uses 16, 1.
-dmm::Matrix<float> C = algorithm.matmul(A, B, executor);
+#include "dmm/algorithms.hpp"
+auto C = dmm::matmul(A, B, executor, "cannon", 64, 1);
+dmm::PreparedMatmul job(A, B, 64, 1, dmm::build_cannon);
+std::vector<float> output(A.values.size());
+job.run_into(output, executor);
 ```
 
 pybind11 exposes `Executor`, `SerialExecutor` and `ThreadExecutor` directly.
@@ -233,15 +230,22 @@ block schedule. Results are verified against the independent FP64 reference.
 
 ## Communication model
 
-`BspPlan` in `include/dmm/bsp_plan.hpp` is the only execution engine. Layout
-builders declare node-owned buffers and `zero/copy/receive/multiply_add/send`
-operations per superstep. `seal` validates the schedule and prepares message
+`BspPlan` in `include/dmm/plan.hpp` is the only execution engine. Layout
+builders declare node-owned buffers and `add_zero/add_copy/add_receive/add_gemm/add_send`
+operations per superstep. `finalize` validates the schedule and prepares message
 slots. `execute` interprets the operation lists through the borrowed executor;
 it does not generate machine code. Each step has copy, kernel and send batches,
 but the model counts one logical superstep. Messages must be consumed exactly
 once in the immediately following step; all cross-node data is explicitly copied.
 
-`include/dmm/bsp.hpp` holds trace/count types and model cost functions. Critical
+`Superstep` handles accept only current-step operations. Each node declares
+copies/receives, then GEMMs, then sends. A message matches by sending step and
+source/destination pair, with one next-step receive. Multiple components between
+the same pair form one ordered bundle; no public tag or message table is needed.
+Shapes and arity are checked at finalization. Equal-shaped components must keep
+the agreed positional order.
+
+`include/dmm/trace.hpp` holds trace/count types and model cost functions. Critical
 counts sum per-step maxima, with h=max(sent,received). The cost is
 T=w*W_crit+g*C_crit+l*S. No sleep emulates a network; saved traces support
 parameter sweeps without repeating matrix arithmetic. See
@@ -356,9 +360,10 @@ See [doc/README.md](doc/README.md) for the build and update workflow.
 
 ## Layout and checks
 
-- `include/dmm/`, `src/bsp.cpp`, `src/cannon.cpp`, `src/execution.cpp`: shared C++ core.
-- `src/bindings.cpp`: pybind11 array validation, ownership and executor/Cannon API.
-- `python/dmm/`: Python configuration, datasets, timing and plotting.
+- `include/dmm/`, `src/plan_build.cpp`, `src/plan_execute.cpp`, `src/trace.cpp`: common C++ runtime.
+- `src/algorithms/`: builder implementations and layout selection.
+- `src/bindings.cpp`: pybind11 array validation, ownership and common executor/matmul API.
+- `python/dmm/`: Python configuration, datasets, saved traces, timing and plotting.
 - `configs/`: smoke, lite and full settings.
 - `doc/`: separate MkDocs documentation repository, tracked as a Git submodule.
 - `tests/cpp/`: native GoogleTest cases for Matrix, MatrixBlockView, BSP, Cannon and Executor,
@@ -376,7 +381,7 @@ The original configuration, CLI, environment, benchmark and analysis tests are
 ported with FP and native-executor adjustments. Layout names are `ring`, `cannon`, `2.5d`; unimplemented layouts fail before setup.
 Only Cannon is currently implemented.
 
-The shared rectangular FP32 kernel is `include/dmm/gemm.hpp`; all layouts
+The shared rectangular FP32 kernel is `include/dmm/detail/gemm.hpp`; all layouts
 must use its fixed tile 32 and common compilation flags. It accepts row strides,
 accumulates into C, supports tile tails, and performs no allocation.
 
@@ -385,8 +390,8 @@ reduction over disjoint ordered node groups. All groups share supersteps;
 messages and reduction FLOPs are recorded by BSP, including the final receive
 step. For each group, rank r has parent (r-1)/2. Singleton groups are no-ops.
 
-Node payload ownership uses move-only `Buffer` from `include/dmm/memory.hpp`.
-Allocate through `BspPlan::allocate` so local tiles,
+Node payload ownership uses move-only `Buffer` from `include/dmm/detail/memory.hpp`.
+Allocate through `BspPlan::allocate_buffer` so local tiles,
 packing buffers, replicas and messages share one per-node memory ledger.
 `Trace.peak_words` and each superstep contain per-node peaks; `Counts.peak_words`
 is their maximum, and count aggregation takes max rather than sum for memory.
@@ -394,7 +399,7 @@ Host Matrix/oracle storage is excluded from logical-node payload; whole-process
 memory requires a separate measurement.
 
 Common row shards and base-layer block conversion are provided by
-`include/dmm/sharding.hpp`. Both directions copy real messages with global
+`include/dmm/redistribution.hpp`. Both directions copy real messages with global
 `ElementRegion` rectangles. Packing and output buffers use the node memory ledger.
 `count_native(trace)` excludes exactly input/output conversion from the full
 trace, keeping the same actual padded dimensions. At n=16, P=16, the full path
@@ -404,10 +409,10 @@ there is no standalone native-input mode.
 
 The versioned [project proposal](doc/docs/proposal.pdf) now specifies C++20
 in both its platform contract and build deliverables, matching CMake and the
-public concept/span interfaces. Its remaining acceptance conditions still apply.
+public span interfaces. Its remaining acceptance conditions still apply.
 
-`BspPlan::multiply_add` couples the shared kernel call with actual (i,k,j), GEMM
-shape and FLOP records. The builder sets `layout.coverage` to its block partition
+`Superstep::add_gemm` couples the shared kernel call with actual (i,k,j), GEMM
+shape and FLOP records. The builder returns `product_grid` to its block partition
 and callers run `dmm.bsp.validate_coverage(trace)` to reject missing/duplicate blocks,
 wrong shapes and inconsistent node work. The independent FP64 oracle remains
 necessary; trace metadata is not included in payload-memory budgets.
@@ -427,7 +432,9 @@ Phase/native costs, budget feasibility, ties and infeasible cells are explicit.
 See [model commands and limits](doc/docs/model.md). The full proposal profile
 is 24 executions/192 scenarios/144 selection cells, and still requires the
 unimplemented ring/2.5D algorithms; its preflight refuses to fabricate results.
-Preallocated measurement, calibration and held-out residual checks remain work.
+New trace captures use schema 2 with ordered message `regions`; saved schema-1
+traces remain readable. `python/dmm/trace.py` provides shared serialization,
+validation and offline loading for model and measurement.
 
 
 Prepared measurements and independent local calibration:
