@@ -128,9 +128,11 @@ TEST(MatmulTest, IndependentBuilderUsesCommonLifecycleAndOwnedInputsWithStridedB
     };
     EXPECT_THROW(dmm::PreparedMatmul(a, b, 1, 1, short_rows), std::invalid_argument);
 }
-TEST(MatmulTest, RegistryRejectsMissingAlgorithmsAndUnknownNames) {
+TEST(MatmulTest, RegistrySelectsEveryLayoutAndRejectsUnknownNames) {
     EXPECT_EQ(dmm::select_builder("cannon"), dmm::build_cannon);
-    for (const auto* layout : {"ring", "2.5d", "fox"})
+    EXPECT_EQ(dmm::select_builder("ring"), dmm::build_ring);
+    EXPECT_EQ(dmm::select_builder("2.5d"), dmm::build_two_point_five_d);
+    for (const auto* layout : {"fox", "ring2", ""})
         EXPECT_THROW(dmm::select_builder(layout), std::invalid_argument);
 }
 TEST(CalibrationTest, IndependentMicrobenchmarksMeasureRealWork) {

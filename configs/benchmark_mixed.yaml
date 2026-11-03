@@ -1,9 +1,11 @@
 data_dir: ../data
 output: ../results/benchmark_mixed.csv
 cases:
+  - {layout: ring, P: 16, c: 1}
   - {layout: cannon, P: 16, c: 1}
+  - {layout: ring, P: 64, c: 1}
   - {layout: cannon, P: 64, c: 1}
-  - {layout: cannon, P: 256, c: 1}
+  - {layout: 2.5d, P: 64, c: 4}
 modes:
   sequential: {}
   threaded:

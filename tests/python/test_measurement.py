@@ -89,7 +89,11 @@ def test_threaded_preflight_requires_physical_cores_without_creating_output(conf
     assert not config.output_dir.exists()
 
 
-def test_missing_teammate_algorithms_fail_preflight(config):
+def test_missing_teammate_algorithms_fail_preflight(config, monkeypatch):
+    def load(name):
+        raise ModuleNotFoundError(f"No module named {name!r}", name=name)
+
+    monkeypatch.setattr('dmm.measurement.import_module', load)
     with pytest.raises(ValueError, match='not implemented'):
         run_measurement(replace(config, cases=[dict(layout='ring', P=1, c=1)]))
     assert not config.output_dir.exists()

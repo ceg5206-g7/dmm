@@ -139,7 +139,15 @@ def test_budget_filters_reuse_costs_and_allow_exact_ties(config):
     assert _winner([dict(name="a", cost=5), dict(name="b", cost=5)], "cost") == ("a|b", 5)
 
 
-def test_missing_algorithm_preflight_creates_no_output_and_never_fabricates_counts(config):
+def test_missing_algorithm_preflight_creates_no_output_and_never_fabricates_counts(config, monkeypatch):
+    from importlib import import_module
+
+    def load(name):
+        if name.endswith(".ring"):
+            raise ModuleNotFoundError(f"No module named {name!r}", name=name)
+        return import_module(name)
+
+    monkeypatch.setattr("dmm.model.import_module", load)
     cfg = replace(config, cases=[dict(layout="cannon", P=4, c=1), dict(layout="ring", P=4, c=1)])
     with pytest.raises(ValueError, match="not implemented"):
         run_model(cfg)

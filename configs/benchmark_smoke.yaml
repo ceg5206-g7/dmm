@@ -2,6 +2,8 @@ data_dir: ../data_smoke
 output: ../results/benchmark_smoke.csv
 cases:
   - {layout: cannon, P: 16, c: 1}
+  - {layout: ring, P: 16, c: 1}
+  - {layout: 2.5d, P: 64, c: 4}
 modes:
   sequential: {}
   threaded:
