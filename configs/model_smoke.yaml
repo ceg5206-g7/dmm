@@ -3,6 +3,8 @@ output_dir: ../results/model_smoke
 cases:
   - {layout: cannon, P: 4, c: 1}
   - {layout: cannon, P: 16, c: 1}
+  - {layout: ring, P: 4, c: 1}
+  - {layout: 2.5d, P: 8, c: 2}
 sizes: [4, 12]
 group: 0
 workers: 0

@@ -15,7 +15,8 @@ add_library(dmm_core
   src/plan_build.cpp src/plan_execute.cpp src/matmul.cpp src/trace.cpp
   src/redistribution.cpp src/collectives.cpp src/validation.cpp
   src/execution.cpp src/calibration.cpp
-  src/algorithms/cannon.cpp src/algorithms/registry.cpp)
+  src/algorithms/cannon.cpp src/algorithms/ring.cpp src/algorithms/two_point_five_d.cpp
+  src/algorithms/registry.cpp)
 target_include_directories(dmm_core PUBLIC include)
 target_link_libraries(dmm_core PUBLIC Threads::Threads)
 target_compile_options(dmm_core PRIVATE -Wall -Wextra -Wpedantic)
@@ -54,6 +55,8 @@ if(BUILD_TESTING)
     tests/cpp/test_matrix_block_view.cpp
     tests/cpp/test_trace.cpp
     tests/cpp/test_cannon.cpp
+    tests/cpp/test_ring.cpp
+    tests/cpp/test_two_point_five_d.cpp
     tests/cpp/test_executor.cpp)
   target_link_libraries(dmm_tests PRIVATE dmm_core GTest::gtest_main)
   include(GoogleTest)

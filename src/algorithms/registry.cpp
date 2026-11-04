@@ -5,8 +5,10 @@ namespace dmm {
 PlanBuilder select_builder(std::string_view layout) {
     if (layout == "cannon")
         return build_cannon;
-    if (layout == "ring" || layout == "2.5d")
-        throw std::invalid_argument("Layout " + std::string(layout) + " is not implemented");
+    if (layout == "ring")
+        return build_ring;
+    if (layout == "2.5d")
+        return build_two_point_five_d;
     throw std::invalid_argument("unknown layout: " + std::string(layout));
 }
 Traced matmul_traced(const Matrix<float>& a, const Matrix<float>& b, Executor& executor,

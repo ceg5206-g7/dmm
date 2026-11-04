@@ -1,16 +1,20 @@
 # Distributed Matrix Multiplication
 
 CEG5206 experiments on matrix layouts and communication costs. C++20 implements
-Cannon and the worker executor; pybind11 exposes them to Python. Python handles
+the 1D ring, Cannon and 2.5D layouts plus the worker executor; pybind11 exposes
+them to Python. Python handles
 shared FP32 NumPy datasets, FP64 references, warmup, repeated timing, CSV output
 and plots.
 
 Cannon uses a configurable q × q logical grid (P=q², default P=16) on a
 BSP runtime: each node owns its A/B/C blocks, and the initial skew and the
-round shifts are real copied messages. Communication is counted per superstep,
+round shifts are real copied messages. The 1D ring (any positive P) circulates
+row blocks around a ring without conversion supersteps; 2.5D (P=c·q²) replicates
+q × q tiles across c layers, splits the Cannon rounds across layers and reduces
+partial sums back. Communication is counted per superstep,
 not delayed; BSP costs are computed from those counts afterwards (see
-[Communication model](#communication-model)). Common row-shard input/output conversion and zero padding are implemented;
-1D ring and 2.5D remain future work. Per-node payload memory
+[Communication model](#communication-model)). Common row-shard input/output conversion and zero padding are implemented.
+Per-node payload memory
 peaks are tracked for local tiles and messages. Wall-clock
 timings describe the single-machine implementation, including message copies.
 
@@ -30,7 +34,8 @@ uv run dmm analyze --input results/benchmark_smoke.csv
 ```
 
 Smoke covers sizes 4 and 12, two input groups, sequential and one/two-worker
-execution, one untimed warmup and two measurements per case: 24 samples.
+execution, one untimed warmup and two measurements per case across three
+layouts (Cannon P=16, ring P=16, 2.5D P=64 c=4): 72 samples.
 Its tiny timings verify the pipeline, not performance. Remove worker count 2
 from the YAML on a host with only one available logical CPU.
 
@@ -164,9 +169,11 @@ across the shared `sizes`, `groups`, and `modes`, in list order within each mode
 data_dir: ../data
 output: ../results/mixed.csv
 cases:
+  - {layout: ring, P: 16, c: 1}
   - {layout: cannon, P: 16, c: 1}
+  - {layout: ring, P: 64, c: 1}
   - {layout: cannon, P: 64, c: 1}
-  - {layout: cannon, P: 256, c: 1}
+  - {layout: 2.5d, P: 64, c: 4}
 modes:
   sequential: {}
   threaded:
@@ -183,10 +190,11 @@ Each case requires exactly `layout`, `P`, and `c`; duplicate cases and old globa
 `algorithms`/`P`/`c` keys are rejected. Convert an old `algorithms: [cannon], P: 64, c: 1`
 configuration to `cases: [{layout: cannon, P: 64, c: 1}]`.
 Valid layouts are `ring`, `cannon`, and `2.5d`. Ring requires c=1; Cannon requires
-c=1 and square P; 2.5D requires P=c*q*q and c dividing q. For example a future
-`{layout: 2.5d, P: 64, c: 4}` case is valid, but its algorithm is not yet implemented.
-Only Cannon currently runs. Missing layouts and invalid configurations fail during
-preflight, before dataset loading or output creation; no case is silently skipped.
+c=1 and square P; 2.5D requires P=c*q*q and c dividing q. For example a
+`{layout: 2.5d, P: 64, c: 4}` case is valid and runs on c=4 layers of 4 × 4 grids.
+All three layouts run. Missing algorithm modules and invalid configurations fail
+during preflight, before dataset loading or output creation; no case is silently
+skipped.
 
 The dispatcher loads `dmm.algorithms.ring`, `dmm.algorithms.cannon`, or
 `dmm.algorithms.two_point_five_d`. Each module provides
@@ -224,6 +232,22 @@ A and B from row shards (two supersteps each) and converts C back afterwards
    and, in the first q−1 rounds, sends A to its left and B to its upper neighbour.
 3. The common route converts C tiles back to row shards, then the host adapter
    gathers/crops the result. All routes use this same output adapter.
+
+The native ring body runs on any positive P without conversion supersteps:
+node i keeps A row strip i and C row strip i and starts with B row block i.
+P multiply supersteps send the current B block to the right neighbour after
+each product (k = (i - round) % P), so every node accumulates C_i = sum_k
+A_{i,k} B_k; node 0 sends nothing in the last step.
+
+The native 2.5D body runs on P = c·q² nodes arranged as c layers of q × q
+grids, node (layer, i, j) living at `layer*q*q + i*q + j`. Row shards convert
+to base-layer tiles, the tiles are tree-broadcast to every layer
+(`replication`), and the layers share one `skew` superstep plus q/c shared
+`multiply` supersteps: layer l executes the rounds [l·q/c, (l+1)·q/c) of the
+full Cannon schedule with skew offset l·q/c, so every (i,k,j) product runs
+exactly once with q/c products per node. Partial C tiles sum to the base layer
+(`reduction`) before the tiles convert back to row shards. For c=1 the route
+degenerates to Cannon's counts exactly.
 
 Accumulation order is fixed for a given padded layout; padding can change the
 block schedule. Results are verified against the independent FP64 reference.
@@ -378,8 +402,10 @@ comparisons, different block sizes, zero/identity/ones/cancellation, repeated ru
 worker errors, invalid arrays, output ownership and concurrent calls, dataset
 validation, executor lifecycle, warmup/timing boundaries and result comparability.
 The original configuration, CLI, environment, benchmark and analysis tests are
-ported with FP and native-executor adjustments. Layout names are `ring`, `cannon`, `2.5d`; unimplemented layouts fail before setup.
-Only Cannon is currently implemented.
+ported with FP and native-executor adjustments. Layout names are `ring`, `cannon`, `2.5d`;
+missing algorithm modules fail before setup.
+Ring and 2.5D add hand-computed communication counts, product-coverage and
+phase-sequence checks, and a c=1 equivalence check against Cannon.
 
 The shared rectangular FP32 kernel is `include/dmm/detail/gemm.hpp`; all layouts
 must use its fixed tile 32 and common compilation flags. It accepts row strides,
@@ -430,8 +456,8 @@ uv run dmm model --config configs/my_model.yaml --traces results/model_smoke/tra
 Raw trace JSONs, input/file hashes and a correctness CSV support audit/reuse.
 Phase/native costs, budget feasibility, ties and infeasible cells are explicit.
 See [model commands and limits](doc/docs/model.md). The full proposal profile
-is 24 executions/192 scenarios/144 selection cells, and still requires the
-unimplemented ring/2.5D algorithms; its preflight refuses to fabricate results.
+is 24 executions/192 scenarios/144 selection cells over ring, Cannon and 2.5D;
+its preflight refuses to fabricate results.
 New trace captures use schema 2 with ordered message `regions`; saved schema-1
 traces remain readable. `python/dmm/trace.py` provides shared serialization,
 validation and offline loading for model and measurement.
@@ -447,7 +473,7 @@ uv run dmm measure --config configs/measure_threaded.yaml --baseline results/mea
 These measure common rows to rows after preallocation, with 5 warmups/15 repeats,
 frozen microkernel w/g/l and held-out residuals. The four-worker profile requires
 four physical cores. See [the measurement protocol](doc/docs/measurement.md).
-Ring and 2.5D still belong to teammates; the full 24-run comparison awaits them.
+Ring and 2.5D are implemented and can be added to any measure/bench/model case list.
 
 Formal measurement requires P<=H<=available physical cores; use `dmm model`
 for P>H correctness/counting. End-to-end measured rows report useful GFLOP/s.

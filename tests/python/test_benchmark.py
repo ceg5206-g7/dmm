@@ -349,7 +349,15 @@ def test_all_combinations_reuse_one_executor_per_mode_and_process_count(data_dir
     assert calls == [(f"dmm.algorithms.{algorithm}", int(size)) for algorithm, _, _, _, size in expected]
 
 
-def test_unimplemented_algorithm_fails_before_creating_output(data_dir, tmp_path):
+def test_unimplemented_algorithm_fails_before_creating_output(data_dir, tmp_path, monkeypatch):
+    from importlib import import_module
+
+    def load(module_name):
+        if module_name.endswith(".ring"):
+            raise ModuleNotFoundError(f"No module named {module_name!r}", name=module_name)
+        return import_module(module_name)
+
+    monkeypatch.setattr(benchmark, "import_module", load)
     output = tmp_path / "results" / "missing.csv"
     with pytest.raises(ValueError, match="ring.*not implemented"):
         benchmark.run_benchmark(make_config(data_dir, output, cases=[dict(layout="cannon", P=16, c=1), dict(layout="ring", P=16, c=1)]))
@@ -695,12 +703,22 @@ def test_dispatch_preserves_layout_and_replication_per_case(data_dir, tmp_path, 
         ("cannon", "16", "1"), ("2.5d", "64", "4")]
 
 
-@pytest.mark.parametrize("case", [dict(layout="ring", P=16, c=1), dict(layout="2.5d", P=64, c=4)])
-def test_unimplemented_layout_after_valid_case_fails_before_any_execution(data_dir, tmp_path, monkeypatch, case):
+@pytest.mark.parametrize("case,module",
+                         [(dict(layout="ring", P=16, c=1), "dmm.algorithms.ring"),
+                          (dict(layout="2.5d", P=64, c=4), "dmm.algorithms.two_point_five_d")])
+def test_unimplemented_layout_after_valid_case_fails_before_any_execution(data_dir, tmp_path, monkeypatch, case, module):
+    from importlib import import_module
+
     def unexpected(*args, **kwargs):
         pytest.fail("preflight must check every case before execution")
 
+    def load(module_name):
+        if module_name == module:
+            raise ModuleNotFoundError(f"No module named {module_name!r}", name=module_name)
+        return import_module(module_name)
+
     monkeypatch.setattr(cannon, "matmul", unexpected)
+    monkeypatch.setattr(benchmark, "import_module", load)
     output = tmp_path / "missing" / "run.csv"
     with pytest.raises(ValueError, match="not implemented"):
         benchmark.run_benchmark(make_config(data_dir, output, cases=[dict(layout="cannon", P=16, c=1), case]))
