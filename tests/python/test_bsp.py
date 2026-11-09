@@ -96,9 +96,9 @@ def test_trace_exposes_per_node_payload_peaks_and_count_takes_maximum(workers):
         _, trace = cannon.matmul_traced(A, A, executor)
     assert len(trace.peak_words) == 16
     assert all(len(step.peak_words) == 16 for step in trace.supersteps)
-    # Allocated buffers, including conversion scratch and message slots, are still
-    # counted in full for this accounting revision.
-    assert max(trace.peak_words) == 152
+    # n pads to 16: A, B, C tiles, the 1x4 scratch strip, and two outgoing plus
+    # two incoming shifted tiles at a barrier. Idle message slots do not count.
+    assert max(trace.peak_words) == 3 * 4**2 + 4 + 4 * 4**2
     assert count(trace).peak_words == max(trace.peak_words)
     assert max(count(step).peak_words for step in trace.supersteps) == count(trace).peak_words
 
@@ -138,8 +138,9 @@ def test_common_and_native_costs_have_explicit_conversion_boundary_and_hand_coun
     assert (end.total_words, end.critical_words, end.messages) == (2496, 164, 216)
     assert (body.supersteps, body.total_words, body.critical_words) == (5, 1920, 128)
     assert (body.total_flops, body.messages) == (8192, 120)
-    # Allocated buffers are still counted in full for this accounting revision.
-    assert body.peak_words == 152
+    # Only live payload counts: A, B and C tiles (48), the 1x4 scratch strip, and
+    # two outgoing plus two incoming shifted tiles at a barrier (64).
+    assert body.peak_words == 3 * 4**2 + 4 + 4 * 4**2
 
 
 @pytest.mark.parametrize("P", [1, 4, 16, 64, 256])

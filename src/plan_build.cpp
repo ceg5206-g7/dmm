@@ -20,7 +20,7 @@ MatrixView MatrixView::submatrix(std::size_t row, std::size_t col, std::size_t h
         throw std::invalid_argument("submatrix must fit inside its parent view");
     return {buffer, height, width, checked_add(offset, checked_add(row * stride, col)), stride};
 }
-BspPlan::BspPlan(std::size_t nodes) : node_times_(nodes), trace_{nodes, {}, {}} {
+BspPlan::BspPlan(std::size_t nodes) : incoming_words_(nodes), node_times_(nodes), trace_{nodes, {}, {}} {
     if (!nodes)
         throw std::invalid_argument("plan needs positive logical nodes");
     for (std::size_t i = 0; i < nodes; ++i)
@@ -53,7 +53,17 @@ BufferId BspPlan::allocate_buffer(std::size_t node, std::size_t words) {
     auto ledger = memory_.at(node);
     buffers_.push_back(Buffer(std::move(ledger), std::vector<float>(words)));
     owners_.push_back(node);
+    host_.push_back(0);
+    slot_.push_back(0);
     return {this, buffers_.size() - 1};
+}
+void BspPlan::mark_host_input(BufferId id) {
+    building();
+    host_[check_buffer(id)] |= 1;
+}
+void BspPlan::mark_host_output(BufferId id) {
+    building();
+    host_[check_buffer(id)] |= 2;
 }
 MatrixView BspPlan::matrix_view(BufferId buffer, std::size_t rows, std::size_t cols, std::size_t offset,
                                 std::size_t stride) const {
@@ -227,6 +237,53 @@ void BspPlan::merge_delivery_steps() {
                 --r.step;
     }
 }
+void BspPlan::infer_lifetimes() {
+    const auto count = buffers_.size(), last = steps_.size() - 1;
+    live_first_.assign(count, none);
+    live_last_.assign(count, none);
+    std::vector<unsigned char> read_first(count);
+    const auto touch = [&](MatrixView view, std::size_t step, bool write) {
+        const auto id = view.buffer.index_;
+        if (live_first_[id] == none) {
+            live_first_[id] = step;
+            read_first[id] = !write;
+        }
+        live_last_[id] = step;
+    };
+    for (std::size_t s = 0; s < steps_.size(); ++s)
+        for (std::size_t node = 0; node < nodes(); ++node) {
+            for (const auto& op : steps_[s].copies[node])
+                if (op.kind == Kind::Zero)
+                    touch(op.a, s, true);
+                else if (op.kind == Kind::Copy) {
+                    touch(op.a, s, false);
+                    touch(op.b, s, true);
+                } else
+                    for (auto target : receives_[op.message].targets)
+                        touch(target, s, op.kind == Kind::Receive);
+            for (const auto& op : steps_[s].kernels[node]) {
+                touch(op.a, s, false);
+                touch(op.b, s, false);
+                touch(op.c, s, false);
+            }
+            for (const auto& op : steps_[s].sends[node])
+                for (const auto& part : messages_[op.message].parts)
+                    touch(part.view, s, false);
+        }
+    live_starts_.assign(steps_.size(), {});
+    live_ends_.assign(steps_.size(), {});
+    for (std::size_t id = 0; id < count; ++id) {
+        if (slot_[id])
+            continue;
+        const bool unused = live_first_[id] == none;
+        live_first_[id] = unused || read_first[id] || (host_[id] & 1) ? 0 : live_first_[id];
+        live_last_[id] = unused || (host_[id] & 2) ? last : live_last_[id];
+        if (live_first_[id])
+            live_starts_[live_first_[id]].push_back(id);
+        if (live_last_[id] < last)
+            live_ends_[live_last_[id]].push_back(id);
+    }
+}
 void BspPlan::finalize(std::size_t original, std::size_t padded, CoverageGrid grid, bool merge_delivery) {
     building();
     if (merge_delivery)
@@ -280,6 +337,7 @@ void BspPlan::finalize(std::size_t original, std::size_t padded, CoverageGrid gr
         if (!cache.contains(key))
             cache.emplace(key, allocate_buffer(m.source, m.words));
         m.storage = cache.at(key);
+        slot_[m.storage.index_] = 1;
     }
     for (std::size_t i = 0; i < receives_.size(); ++i) {
         receives_[i].message = resolved[i];
@@ -289,6 +347,7 @@ void BspPlan::finalize(std::size_t original, std::size_t padded, CoverageGrid gr
     trace_.padded_size = padded;
     trace_.coverage = grid;
     trace_.peak_words.resize(nodes());
+    infer_lifetimes();
     finalized_ = true;
 }
 } // namespace dmm

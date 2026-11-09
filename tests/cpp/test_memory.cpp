@@ -10,11 +10,10 @@ dmm::MatrixView allocate(dmm::BspPlan& plan, std::size_t node, std::size_t words
     return plan.matrix_view(plan.allocate_buffer(node, words), 1, words);
 }
 } // namespace
-TEST(NodeMemoryTest, RetainedCacheCapacityAndIncomingCopiesAreCountedOnEveryRun) {
+TEST(NodeMemoryTest, ReusedMessageSlotsAreCountedOnlyWhileInFlight) {
     static_assert(!std::is_copy_constructible_v<dmm::Buffer>);
     dmm::BspPlan plan(2);
-    auto a = plan.matrix_view(plan.allocate_buffer(0, 6), 1, 6),
-         b = plan.matrix_view(plan.allocate_buffer(1, 6), 1, 6);
+    auto a = allocate(plan, 0, 6), b = allocate(plan, 1, 6);
     for (int round = 0; round < 2; ++round) {
         auto s = plan.add_superstep(dmm::Phase::Replication);
         s.add_send(1, a);
@@ -25,11 +24,51 @@ TEST(NodeMemoryTest, RetainedCacheCapacityAndIncomingCopiesAreCountedOnEveryRun)
     dmm::ThreadExecutor executor(2);
     for (int repeat = 0; repeat < 2; ++repeat) {
         plan.execute(executor);
+        // a plus its outgoing copy on node 0; b plus the incoming copy on node 1.
         EXPECT_EQ(plan.trace().peak_words, (std::vector<std::size_t>{12, 12}));
         EXPECT_EQ(dmm::count(plan.trace()).peak_words, 12u);
         EXPECT_EQ(dmm::count(plan.trace()).total_words, 12u);
     }
 }
+// x is read first (live from step 0) and dies after its send; z and y start at
+// the receive that first writes them. Outgoing and incoming copies coexist at
+// the barrier, then the receiver holds the slot until it consumes it.
+TEST(NodeMemoryTest, PayloadIsLiveOnlyBetweenItsFirstAndLastUse) {
+    dmm::BspPlan plan(2);
+    auto x = allocate(plan, 0, 4), y = allocate(plan, 0, 4), z = allocate(plan, 1, 4);
+    plan.add_superstep(dmm::Phase::Skew).add_send(1, x);
+    auto middle = plan.add_superstep(dmm::Phase::Multiply);
+    middle.add_receive(0, z);
+    middle.add_send(0, z);
+    plan.add_superstep(dmm::Phase::Reduction).add_receive(1, y);
+    plan.finalize(4, 4, {1, 1, 1});
+    std::fill(plan.buffer(x.buffer).begin(), plan.buffer(x.buffer).end(), 3.f);
+    dmm::SerialExecutor executor;
+    for (int repeat = 0; repeat < 2; ++repeat) {
+        plan.execute(executor);
+        const auto& trace = plan.trace();
+        EXPECT_EQ(trace.supersteps[0].peak_words, (std::vector<std::size_t>{8, 4}));
+        EXPECT_EQ(trace.supersteps[1].peak_words, (std::vector<std::size_t>{4, 8}));
+        EXPECT_EQ(trace.supersteps[2].peak_words, (std::vector<std::size_t>{8, 0}));
+        EXPECT_EQ(trace.peak_words, (std::vector<std::size_t>{8, 8}));
+        for (auto value : plan.buffer(y.buffer))
+            EXPECT_EQ(value, 3.f);
+    }
+}
+TEST(NodeMemoryTest, HostBuffersStayLiveForTheWholeRun) {
+    dmm::BspPlan plan(2);
+    auto x = allocate(plan, 0, 4), y = allocate(plan, 1, 4);
+    plan.mark_host_output(x.buffer);
+    plan.mark_host_input(y.buffer);
+    plan.add_superstep(dmm::Phase::Skew).add_send(1, x);
+    plan.add_superstep(dmm::Phase::Multiply).add_receive(0, y);
+    plan.finalize(4, 4, {1, 1, 1});
+    dmm::SerialExecutor executor;
+    plan.execute(executor);
+    EXPECT_EQ(plan.trace().supersteps[0].peak_words, (std::vector<std::size_t>{8, 8}));
+    EXPECT_EQ(plan.trace().supersteps[1].peak_words, (std::vector<std::size_t>{4, 8}));
+}
+// Steps that neither send nor compute need no barrier of their own.
 TEST(DeliveryMergeTest, FoldsDeliveryOnlyStepsIntoTheirSuccessor) {
     for (const bool merge : {false, true})
         for (const bool sum : {false, true}) {

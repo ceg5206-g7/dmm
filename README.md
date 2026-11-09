@@ -15,7 +15,8 @@ partial sums back. Communication is counted per superstep,
 not delayed; BSP costs are computed from those counts afterwards (see
 [Communication model](#communication-model)). Common row-shard input/output conversion and zero padding are implemented.
 Per-node payload memory
-peaks are tracked for local tiles and messages. Wall-clock
+peaks count what is simultaneously live: local tiles between their first and
+last use, and messages while in flight. Wall-clock
 timings describe the single-machine implementation, including message copies.
 
 ## Install and quick start
@@ -425,6 +426,12 @@ For each group, rank r has parent (r-1)/2. Singleton groups are no-ops.
 Node payload ownership uses move-only `Buffer` from `include/dmm/detail/memory.hpp`.
 Allocate through `BspPlan::allocate_buffer` so local tiles,
 packing buffers, replicas and messages share one per-node memory ledger.
+The ledger counts simultaneously live payload, not allocated storage. A buffer
+is live from its first use (from step 0 if that use reads it, or if it is a host
+input) to its last use (to the end if it is a host output). Reusable message
+slots are idle between uses: a message counts on its sender from the send copy
+to the barrier, on both nodes at the barrier, and on its receiver until the
+receive consumes it.
 `Trace.peak_words` and each superstep contain per-node peaks; `Counts.peak_words`
 is their maximum, and count aggregation takes max rather than sum for memory.
 Host Matrix/oracle storage is excluded from logical-node payload; whole-process

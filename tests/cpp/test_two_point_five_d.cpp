@@ -103,6 +103,18 @@ TEST_P(TwoPointFiveDTest, MatchesHandComputedCommunication) {
     expect_work_and_communication(
         dmm::count(trace), (dmm::Counts{8, 8 * flops + 4 * words, flops + words,
                                         488, 128, 44}));
+    // Live payload per node (words): rows are 8, tiles 16. Input rows die after
+    // their last read (nodes 0 and 1 copy their own rectangle in the merged
+    // receive step), layer-1 tiles start at their broadcast receive, C rows at
+    // the output receive. Nodes 0 and 1 peak while broadcasting: rows (16), A/B
+    // tiles (32) and one outgoing A+B message (32). Node 3 peaks in the skew:
+    // A/B/C tiles (48) plus two outgoing and two incoming tiles (64); node 4
+    // (layer 1, offset 1) likewise.
+    EXPECT_EQ(trace.peak_words, (std::vector<std::size_t>{80, 80, 80, 112, 112, 80, 80, 80}));
+    std::vector<std::size_t> node3;
+    for (const auto& step : trace.supersteps)
+        node3.push_back(step.peak_words[3]);
+    EXPECT_EQ(node3, (std::vector<std::size_t>{64, 64, 112, 80, 32, 32, 40, 16}));
 }
 
 // Hand count for (P, c) = (4, 1), n = 8: q = 2, block b = 4, height h = 2,

@@ -192,6 +192,27 @@ TEST_P(CannonTraceTest, SkewsAndShiftsAlongGridRowsAndColumns) {
         }
 }
 
+// Hand count for P = 4, n = 8: q = 2, tiles (= row shards) of 16 words, an
+// 8-word scratch strip. C is live from its zeroing in the skew, scratch from
+// the conversion receive (merged into the skew), A and B until the last GEMM.
+// Every node peaks in the skew or round 0: three tiles, scratch, two outgoing
+// and two incoming shifted tiles, 48 + 8 + 32 + 32.
+TEST_P(CannonTraceTest, CountsOnlyLivePayloadAndInFlightMessages) {
+    auto executor = dmm::make_executor(GetParam());
+    dmm::Matrix<float> a(8), b(8);
+    std::fill(a.values.begin(), a.values.end(), 1);
+    std::fill(b.values.begin(), b.values.end(), 1);
+    const auto trace = dmm::matmul_traced(a, b, *executor, "cannon", 4, 1).trace;
+    EXPECT_EQ(trace.peak_words, (std::vector<std::size_t>{120, 120, 120, 120}));
+    // Node 3 = (1, 1): conversion (A, B + 16 out + 16 in), skew, round 0,
+    // round 1 (incoming A, B consumed), output send (C, scratch + 8 out + 8 in),
+    // output receive (C, scratch + 8 in).
+    std::vector<std::size_t> node3;
+    for (const auto& step : trace.supersteps)
+        node3.push_back(step.peak_words[3]);
+    EXPECT_EQ(node3, (std::vector<std::size_t>{64, 120, 120, 88, 40, 32}));
+}
+
 INSTANTIATE_TEST_SUITE_P(Workers, CannonTraceTest, ::testing::Values(0, 2),
                          ::testing::PrintToStringParamName());
 

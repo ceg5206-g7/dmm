@@ -75,6 +75,11 @@ class BspPlan {
                            std::size_t stride = 0) const;
     std::size_t owner(MatrixView view) const;
     std::span<float> buffer(BufferId id); // Host reset/gather; serialize with execute.
+    // Host-written inputs stay live from the first superstep; host-read outputs
+    // stay live through the last. Other payload is live only between its first
+    // and last use (from step 0 when its first use reads it).
+    void mark_host_input(BufferId id);
+    void mark_host_output(BufferId id);
     Superstep add_superstep(Phase phase);
     // merge_delivery folds every superstep that neither sends nor computes into
     // its successor: no message leaves it, so its closing barrier is redundant.
@@ -121,9 +126,16 @@ class BspPlan {
     bool overlaps(MatrixView a, MatrixView b) const;
     std::span<float> storage(MatrixView view);
     void merge_delivery_steps();
+    void infer_lifetimes();
     std::vector<std::shared_ptr<detail::MemoryLedger>> memory_;
+    std::shared_ptr<detail::MemoryLedger> idle_ = std::make_shared<detail::MemoryLedger>();
     std::vector<Buffer> buffers_;
     std::vector<std::size_t> owners_;
+    // Per buffer: host flags (1 input, 2 output), message-slot flag and live range.
+    std::vector<unsigned char> host_, slot_;
+    std::vector<std::size_t> live_first_, live_last_;
+    std::vector<std::vector<std::size_t>> live_starts_, live_ends_; // Buffer ids per step.
+    std::vector<std::size_t> incoming_words_;
     std::vector<Step> steps_;
     std::vector<Message> messages_;
     std::vector<Receive> receives_;
