@@ -131,6 +131,7 @@ def run_model(config: ModelConfig, traces=None):
     write_csv(output / "phase_model.csv", MODEL_FIELDS, phases)
     write_csv(output / "layout_selection.csv", SELECTION_FIELDS, choices)
     write_json(output / "model.json", {"schema": 1, "units": "T_model stores T_BSP/w0 in FLOP-equivalents; w=w0",
+                "peak_semantics": "live-payload", "superstep_semantics": "delivery-merged",
                 "assumptions": "equal-speed logical nodes; ideal fully connected symmetric full-duplex network; no congestion or overlap",
                 "word_bytes": 4,
                 "formula": "W_crit + gamma*C_crit + lambda*S", "w_over_w0": 1,

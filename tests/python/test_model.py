@@ -67,6 +67,8 @@ def test_real_capture_and_recompute_never_reruns_algorithms_or_loads_inputs(conf
     assert any(r["best"] != "infeasible" for r in choices)
     metadata = json.loads((output / "model.json").read_text())
     assert metadata["executed_configurations"] == 4
+    assert metadata["peak_semantics"] == "live-payload"
+    assert metadata["superstep_semantics"] == "delivery-merged"
     for name in ("layout_selection", "cost_breakdown", "conversion_breakdown", "native_vs_common", "peak_memory"):
         assert (output / f"{name}.png").read_bytes().startswith(b"\x89PNG")
 
@@ -208,7 +210,9 @@ def test_manifest_structure_and_requested_execution_identity_are_checked(config)
     with pytest.raises(ValueError, match="workers"):
         load_traces(root, replace(config, workers=1))
     for manifest in ([], dict(original, schema=True), dict(original, settings=None),
-                     dict(original, files=[None])):
+                     dict(original, files=[None]), dict(original, schema=1),
+                     dict(original, peak_semantics=None),
+                     dict(original, superstep_semantics="legacy")):
         (root / "manifest.json").write_text(json.dumps(manifest))
         with pytest.raises(ValueError):
             load_traces(root, config)
@@ -252,9 +256,9 @@ def test_schema_two_rejects_invalid_component_regions_and_duplicate_pairs(failur
         validate_trace_record(record)
 
 
-def test_real_legacy_schema_one_capture_replays_without_inputs_or_algorithm(tmp_path, monkeypatch):
+def test_real_legacy_schema_one_capture_stays_readable_but_is_not_mixed(tmp_path):
+    """Historical schema-1 records still validate; old captures are not replayed as current counts."""
     from hashlib import sha256
-    import dmm.model as model
 
     fixture = Path(__file__).parents[1] / 'fixtures/trace_v1_cannon.json'
     raw = fixture.read_bytes()
@@ -275,54 +279,12 @@ def test_real_legacy_schema_one_capture_replays_without_inputs_or_algorithm(tmp_
         settings=dict(cases=cfg.cases, sizes=cfg.sizes, workers=cfg.workers, group=cfg.group),
         files=[dict(name=name, sha256=sha256(raw).hexdigest())],
         correctness_sha256=sha256((root / 'correctness.csv').read_bytes()).hexdigest())))
-    def forbidden(*args, **kwargs):
-        pytest.fail('legacy replay must use saved trace only')
-    monkeypatch.setattr(model, 'load_pair', forbidden)
-    monkeypatch.setattr(cannon, 'matmul_traced', forbidden)
-    assert load_traces(root, cfg) == [(legacy, metrics)]
-    run_model(cfg, root)
-    with (cfg.output_dir / 'model.csv').open() as f:
-        row = next(csv.DictReader(f))
-    assert int(row['F_total']) == 128
-    assert float(row['T_model']) == metrics['end_to_end']['W_crit'] + 10 * metrics['end_to_end']['C_crit'] + 100 * metrics['end_to_end']['S']
+    # The old capture used allocated-capacity peaks and unmerged supersteps, so it
+    # must not be mixed into a current sweep; capture it again instead.
+    with pytest.raises(ValueError, match='recapture'):
+        load_traces(root, cfg)
+    assert not cfg.output_dir.exists()
     assert fixture.read_bytes() == raw
-
-
-def _replicated_record(layout):
-    from dmm.algorithms import two_point_five_d, two_point_five_d_direct
-    module = {"2.5d": two_point_five_d, "2.5d-direct": two_point_five_d_direct}[layout]
-    A = np.arange(64, dtype=np.float32).reshape(8, 8) / 64
-    with SerialExecutor() as executor:
-        C, trace = module.matmul_traced(A, A, executor, P=8, c=2)
-    np.testing.assert_allclose(C, A.astype(np.float64) @ A, atol=1e-4, rtol=1e-3)
-    return trace_record(trace, dict(layout=layout, P=8, c=2), 1,
-                        dict(max_abs_error=0, frobenius_relative_error=0), {"A": "0" * 64, "B": "1" * 64})
-
-
-def test_direct_replication_trace_fuses_conversion_and_moves_fewer_words():
-    """The ablation has no conversion phases, so native and end-to-end coincide."""
-    direct = validate_trace_record(_replicated_record("2.5d-direct"))
-    base = validate_trace_record(_replicated_record("2.5d"))
-    assert "input_conversion" not in direct and "output_conversion" not in direct
-    assert {"replication", "reduction"} <= direct.keys()
-    assert direct["native"] == direct["end_to_end"]
-    assert (direct["end_to_end"]["S"], direct["end_to_end"]["C_crit"]) == (5, 80)
-    assert (base["end_to_end"]["S"], base["end_to_end"]["C_crit"]) == (8, 128)
-    # The base-layer route still requires its conversion phases.
-    record = _replicated_record("2.5d")
-    record["supersteps"] = [s for s in record["supersteps"] if s["label"] != "output_conversion"]
-    with pytest.raises(ValueError, match="conversion"):
-        validate_trace_record(record)
-
-
-def test_direct_ablation_profile_extends_the_frozen_main_profile():
-    root = Path(__file__).parents[2] / "configs"
-    main, ablation = load_model_config(root / "model.yaml"), load_model_config(root / "model_direct.yaml")
-    extra = [case for case in ablation.cases if case not in main.cases]
-    assert extra == [dict(layout="2.5d-direct", P=64, c=4), dict(layout="2.5d-direct", P=256, c=4)]
-    assert [case for case in ablation.cases if case in main.cases] == main.cases
-    assert (ablation.sizes, ablation.gammas, ablation.lambdas, ablation.budgets) == (
-        main.sizes, main.gammas, main.lambdas, main.budgets)
 
 
 def _replicated_record(layout):

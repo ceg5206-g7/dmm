@@ -490,8 +490,12 @@ See [model commands and limits](doc/docs/model.md). The full proposal profile
 is 24 executions/192 scenarios/144 selection cells over ring, Cannon and 2.5D;
 its preflight refuses to fabricate results.
 New trace captures use schema 2 with ordered message `regions`; saved schema-1
-traces remain readable. `python/dmm/trace.py` provides shared serialization,
-validation and offline loading for model and measurement.
+traces remain readable through the shared validator. Trace *captures* now carry
+a schema-2 manifest recording the count semantics (`peak_words` = simultaneously
+live payload, `S` = merged-delivery supersteps) and the offline loader rejects
+older manifests instead of mixing the two accounting rules. `python/dmm/trace.py`
+provides shared serialization, validation and offline loading for model and
+measurement.
 
 
 Prepared measurements and independent local calibration:
