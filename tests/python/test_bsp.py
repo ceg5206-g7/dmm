@@ -59,10 +59,13 @@ def test_configured_cannon_grid_controls_product_and_trace(P, workers):
     q = int(P**0.5)
     counts = count(trace)
     assert trace.nodes == P
-    assert counts.supersteps == q + (7 if P > 1 else 1)
+    # One A+B input exchange (received in the skew), q rounds after the skew, and
+    # the output conversion's send and receive; P = 1 is a single local step.
+    assert counts.supersteps == (q + 4 if P > 1 else 1)
     padded = ((32 + P - 1) // P) * P
     assert counts.total_flops == 2 * padded**3
-    assert counts.messages == 2 * (q - 1) * (q + P) + 3 * P * (q - 1)
+    # Each conversion sends P*(q-1) messages; A and B share one conversion.
+    assert counts.messages == 2 * (q - 1) * (q + P) + 2 * P * (q - 1)
 
 
 @pytest.mark.parametrize("P,c", [(0, 1), (-1, 1), (True, 1), (4.0, 1), ("4", 1),
@@ -93,8 +96,9 @@ def test_trace_exposes_per_node_payload_peaks_and_count_takes_maximum(workers):
         _, trace = cannon.matmul_traced(A, A, executor)
     assert len(trace.peak_words) == 16
     assert all(len(step.peak_words) == 16 for step in trace.supersteps)
-    # The common plan retains conversion scratch/cache capacity.
-    assert max(trace.peak_words) == 8 * 4**2
+    # n pads to 16: A, B, C tiles, the 1x4 scratch strip, and two outgoing plus
+    # two incoming shifted tiles at a barrier. Idle message slots do not count.
+    assert max(trace.peak_words) == 3 * 4**2 + 4 + 4 * 4**2
     assert count(trace).peak_words == max(trace.peak_words)
     assert max(count(step).peak_words for step in trace.supersteps) == count(trace).peak_words
 
@@ -128,12 +132,15 @@ def test_common_and_native_costs_have_explicit_conversion_boundary_and_hand_coun
     np.testing.assert_array_equal(C, np.full_like(A, 16))
     end = count(trace)
     body = count_native(trace)
-    assert (end.supersteps, end.total_flops, end.critical_flops) == (11, 8192, 512)
-    assert (end.total_words, end.critical_words, end.messages) == (2496, 164, 264)
+    # One A+B conversion exchange (48 two-part messages), the skew (which also
+    # consumes them), four rounds, and the output conversion's send and receive.
+    assert (end.supersteps, end.total_flops, end.critical_flops) == (8, 8192, 512)
+    assert (end.total_words, end.critical_words, end.messages) == (2496, 164, 216)
     assert (body.supersteps, body.total_words, body.critical_words) == (5, 1920, 128)
     assert (body.total_flops, body.messages) == (8192, 120)
-    # The common plan retains conversion scratch/caches during its native body.
-    assert body.peak_words == 8 * 4**2
+    # Only live payload counts: A, B and C tiles (48), the 1x4 scratch strip, and
+    # two outgoing plus two incoming shifted tiles at a barrier (64).
+    assert body.peak_words == 3 * 4**2 + 4 + 4 * 4**2
 
 
 @pytest.mark.parametrize("P", [1, 4, 16, 64, 256])

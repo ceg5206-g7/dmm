@@ -26,8 +26,8 @@ MatmulDefinition build_cannon(BspPlan& plan, const MatmulConfig& config) {
             scratch[node] = allocate_matrix(node, height, block);
     }
     if (P > 1) {
-        add_rows_to_tiles(plan, config, definition.input_a_rows, A, scratch);
-        add_rows_to_tiles(plan, config, definition.input_b_rows, B, scratch);
+        const ConversionMatrix inputs[]{{definition.input_a_rows, A}, {definition.input_b_rows, B}};
+        add_rows_to_tiles(plan, config, inputs, scratch);
     }
     auto node_at = [q](std::size_t row, std::size_t col) { return (row % q) * q + col % q; };
     auto skew = plan.add_superstep(Phase::Skew);

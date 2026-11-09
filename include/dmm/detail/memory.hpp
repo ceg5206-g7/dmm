@@ -21,11 +21,19 @@ struct MemoryLedger {
         step_peak = std::max(step_peak, live);
     }
     void release(std::size_t words) noexcept { live -= words; }
+    // Record a momentary peak of live + extra words without retaining them.
+    void observe(std::size_t extra) {
+        if (extra > std::numeric_limits<std::size_t>::max() - live)
+            throw std::overflow_error("node payload memory counter overflow");
+        peak = std::max(peak, live + extra);
+        step_peak = std::max(step_peak, live + extra);
+    }
 };
 } // namespace detail
 
-// Move-only node-owned payload. Allocated FP32 slots (including retained storage)
-// are counted, not container metadata. The ledger outlives its BSP if necessary.
+// Move-only node-owned payload. Allocated FP32 slots are counted, not container
+// metadata. BspPlan moves storage between a node ledger (live payload) and an
+// idle ledger (allocated but not live). The ledger outlives its BSP if necessary.
 class Buffer {
   public:
     Buffer() = default;
@@ -42,6 +50,9 @@ class Buffer {
     }
     ~Buffer() { release(); }
     std::size_t size() const noexcept { return values_.size(); }
+    // Ledger charges use the allocated capacity; report the same words as size
+    // and capacity agree for the exact-size vectors plans allocate.
+    std::size_t capacity() const noexcept { return values_.capacity(); }
     bool empty() const noexcept { return values_.empty(); }
     float* data() noexcept { return values_.data(); }
     const float* data() const noexcept { return values_.data(); }

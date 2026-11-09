@@ -1,0 +1,20 @@
+# Ablation: the proposal profile plus direct 2.5D replication/reduction.
+data_dir: ../data
+output_dir: ../results/model_direct
+cases:
+  - {layout: ring, P: 16, c: 1}
+  - {layout: cannon, P: 16, c: 1}
+  - {layout: ring, P: 64, c: 1}
+  - {layout: cannon, P: 64, c: 1}
+  - {layout: 2.5d, P: 64, c: 4}
+  - {layout: 2.5d-direct, P: 64, c: 4}
+  - {layout: ring, P: 256, c: 1}
+  - {layout: cannon, P: 256, c: 1}
+  - {layout: 2.5d, P: 256, c: 4}
+  - {layout: 2.5d-direct, P: 256, c: 4}
+sizes: [256, 512, 1024]
+group: 0
+workers: 0
+gammas: [1, 10, 100, 1000]
+lambdas: [100, 10000]
+budgets: [8, 32]

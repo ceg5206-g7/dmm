@@ -140,9 +140,10 @@ def test_repository_dataset_example_loads():
     assert config.data_dir.resolve() == Path(__file__).parents[2] / "data"
 
 
+@pytest.mark.parametrize("replicated", ["2.5d", "2.5d-direct"])
 @pytest.mark.parametrize("P,c", [(16, 1), (64, 1), (256, 1), (64, 4), (256, 4)])
-def test_yaml_loads_logical_nodes_and_replication(tmp_path, values, P, c):
-    values["cases"] = [dict(layout="2.5d" if c > 1 else "cannon", P=P, c=c)]
+def test_yaml_loads_logical_nodes_and_replication(tmp_path, values, P, c, replicated):
+    values["cases"] = [dict(layout=replicated if c > 1 else "cannon", P=P, c=c)]
     path = tmp_path / "run.yaml"
     path.write_text(yaml.safe_dump(values))
     config = load_benchmark_config(path)
@@ -167,6 +168,7 @@ def test_yaml_rejects_invalid_logical_node_and_replication_types(tmp_path, value
     [{"layout": "cannon", "P": 3, "c": 1}],
     [{"layout": "ring", "P": 16, "c": 4}],
     [{"layout": "2.5d", "P": 16, "c": 4}],
+    [{"layout": "2.5d-direct", "P": 16, "c": 4}],
     [{"layout": "cannon", "P": 16, "c": 1}] * 2,
 ])
 def test_invalid_case_lists_are_rejected(tmp_path, values, cases):
