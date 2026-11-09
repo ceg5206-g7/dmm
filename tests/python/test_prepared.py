@@ -119,8 +119,15 @@ def test_public_shared_entry_points_use_the_same_plan_and_binding():
         np.testing.assert_array_equal(output, expected)
         np.testing.assert_array_equal(shared.matmul(a, a, executor, layout='cannon', P=4, c=1), expected)
         assert _trace_signature(job.trace()) == _trace_signature(trace)
-    for layout in ['ring', '2.5d']:
+    for layout in ['ring', '2.5d', '2.5d-direct']:
         job = shared.prepare(a, a, layout=layout, P=4, c=1)
         assert type(job) is _native.PreparedMatmul
+    with SerialExecutor() as executor:
+        job = shared.prepare(a, a, layout='2.5d-direct', P=8, c=2)
+        output = np.empty_like(a)
+        job.run_into(output, executor)
+        expected, trace = shared.matmul_traced(a, a, executor, layout='2.5d-direct', P=8, c=2)
+        np.testing.assert_array_equal(output, expected)
+        assert _trace_signature(job.trace()) == _trace_signature(trace)
     with pytest.raises(ValueError, match='unknown'):
         shared.prepare(a, a, layout='unknown', P=64, c=1)

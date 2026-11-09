@@ -15,7 +15,8 @@ partial sums back. Communication is counted per superstep,
 not delayed; BSP costs are computed from those counts afterwards (see
 [Communication model](#communication-model)). Common row-shard input/output conversion and zero padding are implemented.
 Per-node payload memory
-peaks are tracked for local tiles and messages. Wall-clock
+peaks count what is simultaneously live: local tiles between their first and
+last use, and messages while in flight. Wall-clock
 timings describe the single-machine implementation, including message copies.
 
 ## Install and quick start
@@ -189,10 +190,11 @@ then `uv run dmm analyze --input results/benchmark_mixed.csv`.
 Each case requires exactly `layout`, `P`, and `c`; duplicate cases and old global
 `algorithms`/`P`/`c` keys are rejected. Convert an old `algorithms: [cannon], P: 64, c: 1`
 configuration to `cases: [{layout: cannon, P: 64, c: 1}]`.
-Valid layouts are `ring`, `cannon`, and `2.5d`. Ring requires c=1; Cannon requires
-c=1 and square P; 2.5D requires P=c*q*q and c dividing q. For example a
+Valid layouts are `ring`, `cannon`, `2.5d` and the `2.5d-direct` ablation. Ring
+requires c=1; Cannon requires c=1 and square P; both 2.5D layouts require P=c*q*q
+and c dividing q. For example a
 `{layout: 2.5d, P: 64, c: 4}` case is valid and runs on c=4 layers of 4 × 4 grids.
-All three layouts run. Missing algorithm modules and invalid configurations fail
+All four layouts run. Missing algorithm modules and invalid configurations fail
 during preflight, before dataset loading or output creation; no case is silently
 skipped.
 
@@ -222,8 +224,10 @@ or reallocate its storage while a view is in use.
 
 The native Cannon body runs on P=q² logical nodes, node `(i, j)`
 having id `qi + j`, in q+1 supersteps. The default common route first converts
-A and B from row shards (two supersteps each) and converts C back afterwards
-(two more); P=1 conversions are local with no extra steps. The native body is:
+A and B from row shards in one exchange (each node pair sends one A+B message,
+received at the start of the skew superstep) and converts C back afterwards
+(two more), so the full route takes q+4 supersteps. P=1 has no conversion and
+nothing to skew: zeroing C joins its single multiply superstep. The native body is:
 
 1. `skew`: each node starts with its owned A_ij and B_ij; C is initialized to zero. A_ij is sent
    to `(i, j - i)` and B_ij to `(i - j, j)`; row 0 of A and column 0 of B stay put.
@@ -249,6 +253,21 @@ exactly once with q/c products per node. Partial C tiles sum to the base layer
 (`reduction`) before the tiles convert back to row shards. For c=1 the route
 degenerates to Cannon's counts exactly.
 
+`2.5d-direct` is an ablation of the proposal's base-layer route with the same
+layer-Cannon body. Because the common input is row-sharded over all P nodes,
+every row shard sends its A+B pieces straight to the matching tiles on all c
+layers (`replication`, one exchange of 2c·n²/P words per node). Each layer's
+partial C tiles then go straight to the row-shard owners, which sum the c
+contributions per block (`reduction`, a reduce-scatter of c·n²/P words per
+node). This removes the base-layer gather, both binary trees and the output
+conversion. For c > 1 there are no conversion phases, so its native and
+end-to-end counts coincide, as for the ring: compare it end to end. With c=1 it
+instead delegates to the base-layer route and is Cannon, conversion phases
+included, so native and end-to-end differ there as they do for Cannon.
+At P=256, c=4 it needs 6 supersteps and C_crit=28·n²/P, versus 11 and 64·n²/P
+for `2.5d` and 20 and 34.8·n²/P for Cannon.
+`configs/model_direct.yaml` is the proposal profile plus the two direct cases.
+
 Accumulation order is fixed for a given padded layout; padding can change the
 block schedule. Results are verified against the independent FP64 reference.
 
@@ -271,7 +290,11 @@ the agreed positional order.
 
 `include/dmm/trace.hpp` holds trace/count types and model cost functions. Critical
 counts sum per-step maxima, with h=max(sent,received). The cost is
-T=w*W_crit+g*C_crit+l*S. No sleep emulates a network; saved traces support
+T=w*W_crit+g*C_crit+l*S. Layout runs finalize with delivery merging: a
+superstep that neither sends nor computes (only receives or copies) needs no
+barrier of its own, so its operations run first in the next superstep, under that
+step's label. Words and FLOPs are unchanged; only S drops. Receive-sum steps
+compute and stay separate. No sleep emulates a network; saved traces support
 parameter sweeps without repeating matrix arithmetic. See
 [system design](doc/docs/design.md) for the lifecycle and measurement boundaries.
 
@@ -368,7 +391,7 @@ at import. Import `dmm` before NumPy for these limits to apply.
 
 The [dmm_doc repository](https://github.com/ceg5206-g7/dmm_doc) is checked out as
 the `doc/` submodule and builds with MkDocs.
-It covers all three layouts, the formal experiment results, measurement rules
+It covers all four layouts, the formal experiment results, measurement rules
 and API references. [Published documentation](https://ceg5206-g7.github.io/dmm_doc/)
 
 ```sh
@@ -401,7 +424,7 @@ communication counts and accumulation order, FP64
 comparisons, different block sizes, zero/identity/ones/cancellation, repeated runs,
 worker errors, invalid arrays, output ownership and concurrent calls, dataset
 validation, executor lifecycle, warmup/timing boundaries and result comparability.
-Layout names are `ring`, `cannon` and `2.5d`. Missing algorithm modules fail
+Layout names are `ring`, `cannon`, `2.5d` and `2.5d-direct`. Missing algorithm modules fail
 before setup.
 Ring and 2.5D add hand-computed communication counts, product-coverage and
 phase-sequence checks, and a c=1 equivalence check against Cannon.
@@ -413,11 +436,18 @@ accumulates into C, supports tile tails, and performs no allocation.
 `include/dmm/collectives.hpp` provides fixed binary-tree broadcast and sum
 reduction over disjoint ordered node groups. All groups share supersteps;
 messages and reduction FLOPs are recorded by BSP, including the final receive
-step. For each group, rank r has parent (r-1)/2. Singleton groups are no-ops.
+step (in layout runs a broadcast's final receive merges into the next superstep).
+For each group, rank r has parent (r-1)/2. Singleton groups are no-ops.
 
 Node payload ownership uses move-only `Buffer` from `include/dmm/detail/memory.hpp`.
 Allocate through `BspPlan::allocate_buffer` so local tiles,
 packing buffers, replicas and messages share one per-node memory ledger.
+The ledger counts simultaneously live payload, not allocated storage. A buffer
+is live from its first use (from step 0 if that use reads it, or if it is a host
+input) to its last use (to the end if it is a host output). Reusable message
+slots are idle between uses: a message counts on its sender from the send copy
+to the barrier, on both nodes at the barrier, and on its receiver until the
+receive consumes it.
 `Trace.peak_words` and each superstep contain per-node peaks; `Counts.peak_words`
 is their maximum, and count aggregation takes max rather than sum for memory.
 Host Matrix/oracle storage is excluded from logical-node payload; whole-process
@@ -425,10 +455,12 @@ memory requires a separate measurement.
 
 Common row shards and base-layer block conversion are provided by
 `include/dmm/redistribution.hpp`. Both directions copy real messages with global
-`ElementRegion` rectangles. Packing and output buffers use the node memory ledger.
+`ElementRegion` rectangles. Several matrices can share one conversion, one
+message per node pair; its components follow the order the route passes them
+(common A then B) in both the send parts and the receive targets. Packing and output buffers use the node memory ledger.
 `count_native(trace)` excludes exactly input/output conversion from the full
 trace, keeping the same actual padded dimensions. At n=16, P=16, the full path
-has S=11, F_total=8192, W_crit=512, C_total=2496 and C_crit=164; the native body
+has S=8, F_total=8192, W_crit=512, C_total=2496 and C_crit=164; the native body
 has S=5, C_total=1920 and C_crit=128. Both metrics come from the same execution;
 there is no standalone native-input mode.
 
@@ -458,8 +490,12 @@ See [model commands and limits](doc/docs/model.md). The full proposal profile
 is 24 executions/192 scenarios/144 selection cells over ring, Cannon and 2.5D;
 its preflight refuses to fabricate results.
 New trace captures use schema 2 with ordered message `regions`; saved schema-1
-traces remain readable. `python/dmm/trace.py` provides shared serialization,
-validation and offline loading for model and measurement.
+traces remain readable through the shared validator. Trace *captures* now carry
+a schema-2 manifest recording the count semantics (`peak_words` = simultaneously
+live payload, `S` = merged-delivery supersteps) and the offline loader rejects
+older manifests instead of mixing the two accounting rules. `python/dmm/trace.py`
+provides shared serialization, validation and offline loading for model and
+measurement.
 
 
 Prepared measurements and independent local calibration:

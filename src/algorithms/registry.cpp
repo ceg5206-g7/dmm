@@ -9,6 +9,8 @@ PlanBuilder select_builder(std::string_view layout) {
         return build_ring;
     if (layout == "2.5d")
         return build_two_point_five_d;
+    if (layout == "2.5d-direct")
+        return build_two_point_five_d_direct;
     throw std::invalid_argument("unknown layout: " + std::string(layout));
 }
 Traced matmul_traced(const Matrix<float>& a, const Matrix<float>& b, Executor& executor,

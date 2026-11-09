@@ -7,6 +7,7 @@
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace {
@@ -71,9 +72,10 @@ TEST_P(TwoPointFiveDTest, HandlesZeroIdentityOnesAndCancellation) {
 }
 
 // Hand count for (P, c) = (8, 2), n = 8: q = 2, block b = 4, height h = 1,
-// one multiply round per layer. Input conversion sends P*q - q = 14 strips of
-// h*b words per matrix; replication/reduction move q*q*(c-1) = 4 tiles; the
-// skew moves 2*c*(q*q - q) = 8 tiles; the single multiply round never sends.
+// one multiply round per layer. Input conversion sends P*q - q = 14 messages,
+// each bundling an A and a B strip of h*b words; replication/reduction move
+// q*q*(c-1) = 4 tiles; the skew moves 2*c*(q*q - q) = 8 tiles; the single
+// multiply round never sends. Delivery-only steps join their successors.
 TEST_P(TwoPointFiveDTest, MatchesHandComputedCommunication) {
     auto executor = dmm::make_executor(GetParam());
     dmm::Matrix<float> a(8), b(8);
@@ -86,13 +88,9 @@ TEST_P(TwoPointFiveDTest, MatchesHandComputedCommunication) {
     const auto flops = 2 * words * 4u;      // 2*b^3 per product
     ASSERT_EQ(trace.nodes, 8u);
     const std::vector<dmm::Counts> expected{
-        {1, 0, 0, 14 * strip, 4 * strip, 14},  // input conversion A, sends
-        {1, 0, 0, 0, 0, 0},                    // input conversion A, receives
-        {1, 0, 0, 14 * strip, 4 * strip, 14},  // input conversion B, sends
-        {1, 0, 0, 0, 0, 0},                    // input conversion B, receives
-        {1, 0, 0, 4 * 2 * words, 2 * words, 4}, // replication, roots send
-        {1, 0, 0, 0, 0, 0},                    // replication, leaves receive
-        {1, 0, 0, 8 * words, 2 * words, 8},    // skew
+        {1, 0, 0, 28 * strip, 8 * strip, 14},  // input conversion, A+B sends
+        {1, 0, 0, 4 * 2 * words, 2 * words, 4}, // conversion receives; replication, roots send
+        {1, 0, 0, 8 * words, 2 * words, 8},    // replication leaves receive; skew
         {1, 8 * flops, flops, 0, 0, 0},        // multiply
         {1, 0, 0, 4 * words, words, 4},        // reduction, leaves send
         {1, 4 * words, words, 0, 0, 0},        // reduction, roots receive_sum
@@ -103,8 +101,20 @@ TEST_P(TwoPointFiveDTest, MatchesHandComputedCommunication) {
     for (std::size_t s = 0; s < expected.size(); ++s)
         expect_work_and_communication(dmm::count(trace.supersteps[s]), expected[s]);
     expect_work_and_communication(
-        dmm::count(trace), (dmm::Counts{12, 8 * flops + 4 * words, flops + words,
-                                        488, 128, 58}));
+        dmm::count(trace), (dmm::Counts{8, 8 * flops + 4 * words, flops + words,
+                                        488, 128, 44}));
+    // Live payload per node (words): rows are 8, tiles 16. Input rows die after
+    // their last read (nodes 0 and 1 copy their own rectangle in the merged
+    // receive step), layer-1 tiles start at their broadcast receive, C rows at
+    // the output receive. Nodes 0 and 1 peak while broadcasting: rows (16), A/B
+    // tiles (32) and one outgoing A+B message (32). Node 3 peaks in the skew:
+    // A/B/C tiles (48) plus two outgoing and two incoming tiles (64); node 4
+    // (layer 1, offset 1) likewise.
+    EXPECT_EQ(trace.peak_words, (std::vector<std::size_t>{80, 80, 80, 112, 112, 80, 80, 80}));
+    std::vector<std::size_t> node3;
+    for (const auto& step : trace.supersteps)
+        node3.push_back(step.peak_words[3]);
+    EXPECT_EQ(node3, (std::vector<std::size_t>{64, 64, 112, 80, 32, 32, 40, 16}));
 }
 
 // Hand count for (P, c) = (4, 1), n = 8: q = 2, block b = 4, height h = 2,
@@ -118,13 +128,10 @@ TEST_P(TwoPointFiveDTest, DegenerateReplicationMatchesCannon) {
     auto [product, trace] = dmm::matmul_traced(a, b, *executor, "2.5d", 4, 1);
     EXPECT_NO_THROW(dmm::validate(product, constant_reference(8, 8)));
     const auto words = 16u, strip = 8u, flops = 2 * words * 4u;
-    ASSERT_EQ(trace.supersteps.size(), 9u);
+    ASSERT_EQ(trace.supersteps.size(), 6u);
     const std::vector<dmm::Counts> expected{
-        {1, 0, 0, 4 * strip, strip, 4},   // input conversion A, sends
-        {1, 0, 0, 0, 0, 0},
-        {1, 0, 0, 4 * strip, strip, 4},   // input conversion B, sends
-        {1, 0, 0, 0, 0, 0},
-        {1, 0, 0, 4 * words, 2 * words, 4},   // skew
+        {1, 0, 0, 8 * strip, 2 * strip, 4},   // input conversion, A+B sends
+        {1, 0, 0, 4 * words, 2 * words, 4},   // conversion receives; skew
         {1, 4 * flops, flops, 8 * words, 2 * words, 8}, // multiply, round 0
         {1, 4 * flops, flops, 0, 0, 0},       // multiply, round 1
         {1, 0, 0, 4 * strip, strip, 4},   // output conversion, sends
@@ -133,7 +140,7 @@ TEST_P(TwoPointFiveDTest, DegenerateReplicationMatchesCannon) {
     for (std::size_t s = 0; s < expected.size(); ++s)
         expect_work_and_communication(dmm::count(trace.supersteps[s]), expected[s]);
     expect_work_and_communication(dmm::count(trace),
-                                  (dmm::Counts{9, 8 * flops, 2 * flops, 288, 88, 24}));
+                                  (dmm::Counts{6, 8 * flops, 2 * flops, 288, 88, 20}));
     // The c = 1 route must be Cannon's route with identical counts.
     const auto cannon = dmm::matmul_traced(a, b, *executor, "cannon", 4, 1).trace;
     const auto left = dmm::count(trace), right = dmm::count(cannon);
@@ -183,15 +190,96 @@ TEST_P(TwoPointFiveDTest, UsesConversionReplicationAndReductionPhases) {
         return result;
     };
     EXPECT_EQ(labels(8, 2),
-              (std::vector<std::string>{"input_conversion", "input_conversion", "input_conversion",
-                                        "input_conversion", "replication", "replication", "skew",
-                                        "multiply", "reduction", "reduction", "output_conversion",
+              (std::vector<std::string>{"input_conversion", "replication", "skew", "multiply",
+                                        "reduction", "reduction", "output_conversion",
                                         "output_conversion"}));
     EXPECT_EQ(labels(4, 1),
-              (std::vector<std::string>{"input_conversion", "input_conversion", "input_conversion",
-                                        "input_conversion", "skew", "multiply", "multiply",
+              (std::vector<std::string>{"input_conversion", "skew", "multiply", "multiply",
                                         "output_conversion", "output_conversion"}));
-    EXPECT_EQ(labels(1, 1), (std::vector<std::string>{"skew", "multiply"}));
+    EXPECT_EQ(labels(1, 1), (std::vector<std::string>{"multiply"}));
+}
+
+TEST_P(TwoPointFiveDTest, DirectRouteMatchesFP64ReferenceAndCoversEveryProductOnce) {
+    auto executor = dmm::make_executor(GetParam());
+    std::mt19937 random(5206);
+    std::uniform_real_distribution<float> value(-1, 1);
+    for (const auto [P, c, q] : std::vector<std::tuple<std::size_t, std::size_t, std::size_t>>{
+             {1, 1, 1}, {4, 1, 2}, {8, 2, 2}, {32, 2, 4}, {27, 3, 3}, {64, 4, 4}})
+        for (std::size_t n : {4, 12, 33}) {
+            SCOPED_TRACE(::testing::Message() << "P=" << P << " c=" << c << " size=" << n);
+            dmm::Matrix<float> a(n), b(n);
+            for (auto& x : a.values)
+                x = value(random);
+            for (auto& x : b.values)
+                x = value(random);
+            const auto [product, trace] = dmm::matmul_traced(a, b, *executor, "2.5d-direct", P, c);
+            EXPECT_NO_THROW(dmm::validate(product, reference(a, b)));
+            EXPECT_NO_THROW(dmm::validate_coverage(trace));
+            std::vector<std::size_t> seen(q * q * q);
+            for (const auto& step : trace.supersteps)
+                for (const auto& record : step.products)
+                    ++seen[(record.product.i * q + record.product.k) * q + record.product.j];
+            for (auto count : seen)
+                EXPECT_EQ(count, 1u);
+        }
+}
+
+// Hand count for the direct route at (P, c) = (8, 2), n = 8: q = 2, b = 4,
+// h = 1, so tile row i collects row shards [4i, 4i + 4). Shards 0, 1, 6 and 7
+// own a tile they feed (nodes 0, 1, 6, 7) and copy that piece locally.
+// Replication: 8 shards x 4 tiles - 4 local = 28 messages of an A and a B
+// strip (8 words); shards 2..5 send 4 and tiles 2..5 receive 4, so h = 32.
+// The skew and multiply match the base-layer route. Reduce-scatter: 28 strips
+// of C (4 words), h = 16; each shard then adds (c - 1) strips per column block.
+TEST_P(TwoPointFiveDTest, DirectRouteMatchesHandComputedCommunicationAndMemory) {
+    auto executor = dmm::make_executor(GetParam());
+    dmm::Matrix<float> a(8), b(8);
+    std::fill(a.values.begin(), a.values.end(), 1);
+    std::fill(b.values.begin(), b.values.end(), 1);
+    auto [product, trace] = dmm::matmul_traced(a, b, *executor, "2.5d-direct", 8, 2);
+    EXPECT_NO_THROW(dmm::validate(product, constant_reference(8, 8)));
+    const auto words = 16u, strip = 4u, flops = 2 * words * 4u, sums = 2 * strip;
+    const std::vector<dmm::Counts> expected{
+        {1, 0, 0, 28 * 2 * strip, 8 * strip, 28}, // replication: shards send to all layers
+        {1, 0, 0, 8 * words, 2 * words, 8},       // replication receives; skew
+        {1, 8 * flops, flops, 0, 0, 0},           // multiply
+        {1, 0, 0, 28 * strip, 4 * strip, 28},     // reduce-scatter sends
+        {1, 8 * sums, sums, 0, 0, 0},             // row shards sum the layers
+    };
+    ASSERT_EQ(trace.supersteps.size(), expected.size());
+    for (std::size_t s = 0; s < expected.size(); ++s)
+        expect_work_and_communication(dmm::count(trace.supersteps[s]), expected[s]);
+    const auto all = dmm::count(trace);
+    expect_work_and_communication(all, (dmm::Counts{5, 8 * flops + 8 * sums, flops + sums, 464, 80, 64}));
+    // No conversion phases: the native body is the whole route.
+    EXPECT_EQ(dmm::count_native(trace), all);
+    std::vector<std::string> labels;
+    for (const auto& step : trace.supersteps)
+        labels.push_back(step.label);
+    EXPECT_EQ(labels, (std::vector<std::string>{"replication", "skew", "multiply", "reduction", "reduction"}));
+    // Node 0 copies its own pieces into its tiles in the send step: A/B rows (16)
+    // and tiles (32), 24 words out and 24 in. Node 4 (layer 1) receives its
+    // tiles in the skew, where it also sends and receives two tiles.
+    const auto peaks = [&](std::size_t node) {
+        std::vector<std::size_t> result;
+        for (const auto& step : trace.supersteps)
+            result.push_back(step.peak_words[node]);
+        return result;
+    };
+    EXPECT_EQ(peaks(0), (std::vector<std::size_t>{96, 72, 48, 48, 20}));
+    EXPECT_EQ(peaks(4), (std::vector<std::size_t>{80, 112, 80, 48, 24}));
+    EXPECT_EQ(all.peak_words, 112u);
+}
+
+TEST_P(TwoPointFiveDTest, DirectRouteWithoutReplicationIsCannon) {
+    auto executor = dmm::make_executor(GetParam());
+    dmm::Matrix<float> a(8), b(8);
+    std::fill(a.values.begin(), a.values.end(), 1);
+    std::fill(b.values.begin(), b.values.end(), 1);
+    const auto direct = dmm::matmul_traced(a, b, *executor, "2.5d-direct", 4, 1).trace;
+    const auto cannon = dmm::matmul_traced(a, b, *executor, "cannon", 4, 1).trace;
+    EXPECT_EQ(dmm::count(direct), dmm::count(cannon));
+    EXPECT_EQ(direct.peak_words, cannon.peak_words);
 }
 
 INSTANTIATE_TEST_SUITE_P(Workers, TwoPointFiveDTest, ::testing::Values(0, 2),

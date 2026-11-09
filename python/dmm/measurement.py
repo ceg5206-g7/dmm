@@ -256,7 +256,7 @@ def run_measurement(config: MeasurementConfig, baseline=None):
                             raise ValueError('invalid measured performance metric')
                     summaries.append(row)
     save_trace_manifest(config, trace_dir, traces, trace_correctness,
-                        'prepared measurement trace; retained cache memory counted; use measured_model.csv for statistical times')
+                        'prepared measurement trace; live payload and in-flight messages counted; use measured_model.csv for statistical times')
     sample_fields = ('n', 'layout', 'P', 'c', 'H', 'phase', 'repeat', *PARTS)
     extra_fields = ('w', 'g', 'l', 'T_model_seconds', 'residual_seconds', 'relative_residual',
                     'baseline_time_s', 'baseline_P', 'baseline_H', 'baseline_source',

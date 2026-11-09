@@ -10,7 +10,7 @@ from pathlib import Path
 
 from dmm import _native
 from dmm.benchmark import source_revision
-from dmm.config import validate_case
+from dmm.config import REPLICATED_LAYOUTS, validate_case
 from dmm._native import (Trace, SuperstepRecord, MessageRecord, ElementRegion,
                          ProductRecord, ProductRegion, CoverageGrid, Counts,
                          count, count_native, bsp_cost, validate_coverage)
@@ -34,7 +34,13 @@ def _integer(value, name, minimum=0):
 
 
 def trace_record(trace, case, H, errors, input_hashes):
-    """Serialize the executed trace, not an analytic reconstruction of its schedule."""
+    """Serialize the executed trace, not an analytic reconstruction of its schedule.
+
+    Counts follow the current semantics: ``peak_words`` is simultaneously live
+    payload (in-flight message slots included) and ``S`` is the merged-delivery
+    superstep count. Captures written before those semantics are rejected by
+    ``load_traces`` through the manifest version instead of being mixed in.
+    """
     _native.validate_coverage(trace)
     record = {"schema": 2, "n": trace.original_size, "n_padded": trace.padded_size,
               **case, "H": H, "coverage": [trace.coverage.row_parts, trace.coverage.inner_parts,
@@ -177,9 +183,11 @@ def validate_trace_record(record):
             native_steps.append(counts)
     if len(seen) != parts[0] * parts[1] * parts[2]:
         raise ValueError("missing executed product coverage")
-    if case["layout"] != "ring" and P > 1 and not {"input_conversion", "output_conversion"} <= per_phase.keys():
+    # Ring works on row shards; direct 2.5D fuses conversion into replication/reduction.
+    fused = case["layout"] == "ring" or (case["layout"] == "2.5d-direct" and case["c"] > 1)
+    if not fused and P > 1 and not {"input_conversion", "output_conversion"} <= per_phase.keys():
         raise ValueError("matrix trace is missing common input/output conversion")
-    if case["layout"] == "2.5d" and case["c"] > 1 and not {"replication", "reduction"} <= per_phase.keys():
+    if case["layout"] in REPLICATED_LAYOUTS and case["c"] > 1 and not {"replication", "reduction"} <= per_phase.keys():
         raise ValueError("replicated matrix trace is missing replication/reduction")
     result = {name: _merge(values) for name, values in per_phase.items()}
     result["end_to_end"], result["native"] = _merge(all_steps), _merge(native_steps)
@@ -196,7 +204,9 @@ def save_trace_manifest(config, directory, files, correctness, purpose):
     write_csv(directory / "correctness.csv", ("n", "layout", "P", "c", "max_abs_error", "frobenius_relative_error"), correctness)
     settings = asdict(config)
     settings["data_dir"], settings["output_dir"] = str(config.data_dir), str(config.output_dir)
-    write_json(directory / "manifest.json", {"schema": 1, "settings": settings, "files": files,
+    write_json(directory / "manifest.json", {"schema": 2,
+                "peak_semantics": "live-payload", "superstep_semantics": "delivery-merged",
+                "settings": settings, "files": files,
                 "compiler": _native.compiler, "build_type": _native.build_type, "git": source_revision(),
                 "correctness_sha256": sha256((directory / "correctness.csv").read_bytes()).hexdigest(),
                 "validation_rule": "abs(error) <= 1e-4 + 1e-3 * abs(FP64 reference)",
@@ -208,8 +218,11 @@ def load_traces(directory, config):
     """Verify capture completeness and hashes before using saved counts."""
     directory = Path(directory)
     manifest = json.loads((directory / "manifest.json").read_text())
-    if not isinstance(manifest, dict) or type(manifest.get("schema")) is not int or manifest.get("schema") != 1:
-        raise ValueError("unsupported trace manifest")
+    if not isinstance(manifest, dict) or type(manifest.get("schema")) is not int or manifest.get("schema") != 2:
+        raise ValueError("unsupported trace manifest; recapture traces with the current release")
+    if (manifest.get("peak_semantics") != "live-payload"
+            or manifest.get("superstep_semantics") != "delivery-merged"):
+        raise ValueError("saved traces use different payload/superstep semantics; recapture them")
     settings, files = manifest.get("settings"), manifest.get("files")
     if not isinstance(settings, dict) or not isinstance(files, list):
         raise ValueError("trace manifest needs settings and files")

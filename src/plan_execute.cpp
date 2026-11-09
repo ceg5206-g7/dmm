@@ -22,11 +22,13 @@ RunTimings BspPlan::execute(Executor& executor) {
     if (!finalized_)
         throw std::logic_error("finalize plan before execution");
     executed_ = false;
-    // A failed batch may leave a reusable message slot accounted to its recipient.
-    for (const auto& message : messages_) {
-        auto& buffer = buffers_[message.storage.index_];
-        if (buffer.ledger_ != memory_[message.source])
-            buffer.rebind(memory_[message.source]);
+    // Charge exactly the payload live before the first superstep: buffers whose
+    // lifetime starts at step 0. Message slots and later-starting buffers are idle.
+    // This also repairs the accounting after a failed batch.
+    for (std::size_t id = 0; id < buffers_.size(); ++id) {
+        const auto& ledger = slot_[id] || live_first_[id] ? idle_ : memory_[owners_[id]];
+        if (buffers_[id].ledger_ != ledger)
+            buffers_[id].rebind(ledger);
     }
     for (auto& ledger : memory_)
         ledger->peak = ledger->live;
@@ -44,7 +46,15 @@ RunTimings BspPlan::execute(Executor& executor) {
         std::fill(record.flops.begin(), record.flops.end(), 0);
         for (auto& ledger : memory_)
             ledger->step_peak = ledger->live;
+        for (auto id : live_starts_[s])
+            buffers_[id].rebind(memory_[owners_[id]]);
         for (unsigned char batch = 0; batch < 3; ++batch) {
+            // A sender holds each outgoing payload from its send copy onwards.
+            if (batch == 2)
+                for (auto id : step.outgoing) {
+                    const auto& message = messages_[id];
+                    buffers_[message.storage.index_].rebind(memory_[message.source]);
+                }
             auto task = [&](std::size_t node) {
                 const auto local_start = Clock::now();
                 const auto& ops = batch == 0   ? step.copies[node]
@@ -105,19 +115,28 @@ RunTimings BspPlan::execute(Executor& executor) {
             executor.for_each(nodes(), std::ref(task));
             const auto critical = *std::max_element(node_times_.begin(), node_times_.end());
             (batch == 1 ? timing.compute : timing.copy) += critical;
+            // A receiver frees each delivered payload once it has been consumed.
             if (batch == 0)
                 for (auto id : step.incoming) {
                     const auto& message = messages_[id];
                     if (!message.received)
                         throw std::logic_error("message was not received");
-                    buffers_[message.storage.index_].rebind(memory_[message.source]);
-                }
-            if (batch == 2)
-                for (auto id : step.outgoing) {
-                    const auto& message = messages_[id];
-                    buffers_[message.storage.index_].rebind(memory_[message.destination]);
+                    buffers_[message.storage.index_].rebind(idle_);
                 }
         }
+        // At the barrier both copies exist: senders still hold outgoing payloads
+        // while receivers already hold incoming ones. Then ownership moves over.
+        std::fill(incoming_words_.begin(), incoming_words_.end(), 0);
+        for (auto id : step.outgoing)
+            incoming_words_[messages_[id].destination] += buffers_[messages_[id].storage.index_].capacity();
+        for (std::size_t node = 0; node < nodes(); ++node)
+            memory_[node]->observe(incoming_words_[node]);
+        for (auto id : step.outgoing) {
+            const auto& message = messages_[id];
+            buffers_[message.storage.index_].rebind(memory_[message.destination]);
+        }
+        for (auto id : live_ends_[s])
+            buffers_[id].rebind(idle_);
         for (std::size_t node = 0; node < nodes(); ++node)
             record.peak_words[node] = memory_[node]->step_peak;
         timing.total += seconds(step_start);

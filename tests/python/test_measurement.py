@@ -40,7 +40,8 @@ def test_real_calibration_frozen_across_heldout_sizes_and_reproducible_csv(confi
     assert len(samples) == 2 * 7 * config.repeats
     assert set(int(r['n']) for r in models) == {5, 12}
     assert not set(config.sizes) & set(calibration['micro_sizes'])
-    assert {r['phase'] for r in models} == {'end_to_end', 'native', 'skew', 'multiply'}
+    # P = 1 has nothing to skew: zeroing C joins its single multiply superstep.
+    assert {r['phase'] for r in models} == {'end_to_end', 'native', 'multiply'}
     for row in models:
         assert all(float(row[k]) == parameters[k] for k in ('w', 'g', 'l'))
         prediction = sum(parameters[k] * float(row[c]) for k, c in [('w', 'W_crit'), ('g', 'C_crit'), ('l', 'S')])

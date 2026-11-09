@@ -15,6 +15,16 @@ inline std::size_t grid_size(std::size_t P, std::size_t c = 1) {
 }
 
 std::size_t padded_size(std::size_t original_size, std::size_t P);
+// One matrix of a conversion: P row-shard views and the q*q base-layer tiles.
+struct ConversionMatrix {
+    std::span<const MatrixView> rows, tiles;
+};
+// Every matrix moves in the same two supersteps; a node pair exchanges one
+// message whose components follow the matrix order. Scratch is shared.
+void add_rows_to_tiles(BspPlan&, const MatmulConfig&, std::span<const ConversionMatrix> matrices,
+                       std::span<const MatrixView> scratch = {});
+void add_tiles_to_rows(BspPlan&, const MatmulConfig&, std::span<const ConversionMatrix> matrices,
+                       std::span<const MatrixView> scratch = {});
 void add_rows_to_tiles(BspPlan&, const MatmulConfig&, std::span<const MatrixView> rows,
                        std::span<const MatrixView> tiles, std::span<const MatrixView> scratch = {});
 void add_tiles_to_rows(BspPlan&, const MatmulConfig&, std::span<const MatrixView> tiles,
