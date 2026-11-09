@@ -1,0 +1,12 @@
+data_dir: ../results/data_padding
+output_dir: ../results/model_padding
+cases:
+  - {layout: ring, P: 64, c: 1}
+  - {layout: cannon, P: 64, c: 1}
+  - {layout: 2.5d, P: 64, c: 4}
+sizes: [17, 65, 257]
+group: 0
+workers: 0
+gammas: [1]
+lambdas: [100]
+budgets: [8, 32]
