@@ -49,7 +49,7 @@ uv run dmm analyze --input results/benchmark_lite.csv
 
 The dataset contains sizes 16 through 2048. Lite measures sizes through 256,
 three groups, sequential and one/two-worker execution, with two warmups and
-one measurement per case: 45 samples, matching `matmul` lite. The full
+one measurement per case, for 45 samples. The full
 configuration uses all sizes, five warmups and fifteen measurements per case:
 1080 samples. Increase `repeats` in YAML for more samples.
 
@@ -282,8 +282,8 @@ calls; `repeats` is the number of independent measured calls. Defaults are
 five warmups and fifteen measurements; the example configs set both explicitly.
 Each case is one algorithm/mode/workers/group/size setting. There is no automatic iteration calibration.
 
-Python surrounds `matmul(A, B, executor)` with `time.perf_counter()`, matching
-`matmul`'s measurement boundary. Timing includes the Python wrapper, binding,
+Python measures `matmul(A, B, executor)` with `time.perf_counter()`.
+Timing includes the Python wrapper, binding,
 input validation/copies, node-local block copies, message copies and delivery,
 all block products, worker dispatch/completion per superstep, assembly and output copying.
 Input/reference loading, worker creation, warmup, correctness checks and file
@@ -299,7 +299,7 @@ previous persistent-runner boundary are not directly comparable to these runs.
 Every measured result is checked against the saved NumPy FP64 product using
 `abs(actual - reference) <= 1e-4 + 1e-3 * abs(reference)`. Non-finite results
 and invalid times are rejected; differences and error norms are computed in
-FP64. As in `matmul`, each validated row is immediately written and flushed.
+FP64. The runner immediately writes and flushes each validated row.
 A later failure preserves earlier rows and run metadata; the failed result is
 not recorded. Partial results do not imply the configured experiment completed.
 
@@ -308,7 +308,7 @@ Each run writes:
 - `benchmark_lite.csv`: one row per measured call, with times in seconds,
   layout/P/c/mode/workers/group/pair/size/repeat identifiers, maximum absolute
   error and Frobenius relative error. Serial `workers` is empty; `pair` is the
-  size index in the dataset manifest, as in `matmul`. Each row records its own layout, P and c.
+  size index in the dataset manifest. Each row records its own layout, P and c.
 - `benchmark_lite.json`: the original `started_at`, `benchmark`, `dataset`,
   `environment` and `git` structure, plus a `native` section for compiler/build
   type, FP types, timing boundary and timer details. Settings include warmups. A dirty flag does not preserve local changes.
@@ -323,10 +323,9 @@ with an `algorithm` column are still readable; their unknown P/c are left blank
 in summaries rather than inferred. Duplicate samples, incomplete repeats, missing baselines,
 mismatched groups and invalid times are rejected. There is no assumed speedup.
 
-## Dataset compatibility with matmul
+## Dataset format
 
-The dataset layout, configuration and loading interfaces are carried over from
-`matmul`. The defaults use seed 5206, groups 0/1/2, sizes 16 through 2048,
+The defaults use seed 5206, groups 0/1/2, sizes 16 through 2048,
 and value bounds [0, 255]. Values are uniformly sampled and rounded to FP32.
 Generation uses `np.random.default_rng([seed, group_id, size])`, so the same
 settings reproduce the same inputs independently of generation order.
@@ -363,12 +362,12 @@ Earlier int64 `.npy` datasets and raw `.f32`/`.f64` datasets are incompatible.
 Generate a new floating-point `.npy` dataset in a fresh directory; existing data
 is never overwritten. The
 package sets OMP, MKL, OpenBLAS, Accelerate and NumExpr thread limits to one
-at import, as in `matmul`. Import `dmm` before NumPy for these limits to apply.
+at import. Import `dmm` before NumPy for these limits to apply.
 
 ## Documentation
 
 The [dmm_doc repository](https://github.com/ceg5206-g7/dmm_doc) is checked out as
-the `doc/` submodule and follows the MkDocs structure used by `matmul/doc`.
+the `doc/` submodule and builds with MkDocs.
 It covers all three layouts, the formal experiment results, measurement rules
 and API references. [Published documentation](https://ceg5206-g7.github.io/dmm_doc/)
 
@@ -402,9 +401,8 @@ communication counts and accumulation order, FP64
 comparisons, different block sizes, zero/identity/ones/cancellation, repeated runs,
 worker errors, invalid arrays, output ownership and concurrent calls, dataset
 validation, executor lifecycle, warmup/timing boundaries and result comparability.
-The original configuration, CLI, environment, benchmark and analysis tests are
-ported with FP and native-executor adjustments. Layout names are `ring`, `cannon`, `2.5d`;
-missing algorithm modules fail before setup.
+Layout names are `ring`, `cannon` and `2.5d`. Missing algorithm modules fail
+before setup.
 Ring and 2.5D add hand-computed communication counts, product-coverage and
 phase-sequence checks, and a c=1 equivalence check against Cannon.
 

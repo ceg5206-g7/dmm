@@ -1,4 +1,4 @@
-"""Generate/load matmul-style NumPy datasets with FP32 inputs and FP64 references."""
+"""Generate and load NumPy datasets with FP32 inputs and FP64 references."""
 
 import json
 from pathlib import Path
