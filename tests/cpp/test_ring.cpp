@@ -4,6 +4,7 @@
 #include "test_counts.hpp"
 #include <algorithm>
 #include <cstddef>
+#include <limits>
 #include <random>
 #include <stdexcept>
 #include <vector>
@@ -129,6 +130,49 @@ TEST(RingValidationTest, RejectsReplicationAndMalformedMatrices) {
     EXPECT_THROW(dmm::matmul(a, b, executor, "ring", 4, 2), std::invalid_argument);
     dmm::Matrix<float> mismatched(3);
     EXPECT_THROW(dmm::matmul(a, mismatched, executor, "ring", 4, 1), std::invalid_argument);
+}
+
+TEST(RingValidationTest, DirectBuilderRejectsInvalidDimensions) {
+    dmm::BspPlan plan(1);
+    const auto oversized = std::numeric_limits<std::size_t>::max();
+    EXPECT_THROW(dmm::build_ring(plan, {1, 0, 1}), std::invalid_argument);
+    EXPECT_THROW(dmm::build_ring(plan, {oversized, 1, 1}), std::invalid_argument);
+}
+
+TEST(RingDispatchTest, RotatesDistinctPayloadsThroughBothShifts) {
+    dmm::Matrix<float> a(6), b(6), expected(6);
+    for (std::size_t i = 0; i < b.values.size(); ++i)
+        b.values[i] = float(i + 1);
+    const std::size_t selected_rows[] = {2, 5, 4, 1, 0, 3};
+    for (std::size_t row = 0; row < a.size; ++row) {
+        a.values[row * a.size + selected_rows[row]] = 1;
+        std::copy_n(b.values.begin() + selected_rows[row] * b.size, b.size,
+                    expected.values.begin() + row * a.size);
+    }
+    dmm::ThreadExecutor executor(2);
+    const auto [product, trace] = dmm::matmul_traced(a, b, executor, "ring", 3);
+    EXPECT_EQ(product.values, expected.values);
+    const std::size_t origins[2][3] = {{0, 2, 4}, {4, 0, 2}};
+    ASSERT_EQ(trace.supersteps.size(), 3u);
+    for (std::size_t round = 0; round < 2; ++round) {
+        const auto& messages = trace.supersteps[round].messages;
+        ASSERT_EQ(messages.size(), 3u);
+        bool sent[3] = {};
+        for (const auto& message : messages) {
+            ASSERT_LT(message.source, 3u);
+            EXPECT_FALSE(sent[message.source]);
+            sent[message.source] = true;
+            EXPECT_EQ(message.destination, (message.source + 1) % 3);
+            EXPECT_EQ(message.words, 12u);
+            ASSERT_EQ(message.regions.size(), 1u);
+            const auto& region = message.regions.front();
+            EXPECT_EQ(region.row, origins[round][message.source]);
+            EXPECT_EQ(region.col, 0u);
+            EXPECT_EQ(region.rows, 2u);
+            EXPECT_EQ(region.cols, 6u);
+        }
+    }
+    EXPECT_TRUE(trace.supersteps.back().messages.empty());
 }
 
 TEST(RingDispatchTest, NonSquareNodeCountsAreValid) {

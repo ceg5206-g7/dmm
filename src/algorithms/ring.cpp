@@ -9,16 +9,16 @@ MatmulDefinition build_ring(BspPlan& plan, const MatmulConfig& config) {
     if (config.c != 1)
         throw std::invalid_argument("ring requires c = 1");
     const auto N = config.padded_size, P = config.P;
-    if (!N || N % P || plan.nodes() != P)
+    if (!P || !N || N % P || plan.nodes() != P)
         throw std::invalid_argument("invalid ring configuration");
-    const auto height = N / P;
+    const auto height = N / P, words = detail::elements<float>(N) / P;
     MatmulDefinition definition{std::vector<MatrixView>(P), std::vector<MatrixView>(P),
                                 std::vector<MatrixView>(P), {P, P, 1}};
     std::vector<MatrixView> A(P), B(P), C(P);
     for (std::size_t node = 0; node < P; ++node) {
-        A[node] = plan.matrix_view(plan.allocate_buffer(node, height * N), height, N);
-        B[node] = plan.matrix_view(plan.allocate_buffer(node, height * N), height, N);
-        C[node] = plan.matrix_view(plan.allocate_buffer(node, height * N), height, N);
+        A[node] = plan.matrix_view(plan.allocate_buffer(node, words), height, N);
+        B[node] = plan.matrix_view(plan.allocate_buffer(node, words), height, N);
+        C[node] = plan.matrix_view(plan.allocate_buffer(node, words), height, N);
         definition.input_a_rows[node] = A[node];
         definition.input_b_rows[node] = B[node];
         definition.output_c_rows[node] = C[node];
