@@ -45,8 +45,8 @@ MatmulDefinition build_two_point_five_d(BspPlan& plan, const MatmulConfig& confi
             C[node] = plan.matrix_view(plan.allocate_buffer(node, block * block), block, block);
         }
     }
-    add_rows_to_tiles(plan, config, definition.input_a_rows, A, scratch);
-    add_rows_to_tiles(plan, config, definition.input_b_rows, B, scratch);
+    const ConversionMatrix inputs[]{{definition.input_a_rows, A}, {definition.input_b_rows, B}};
+    add_rows_to_tiles(plan, config, inputs, scratch);
     std::vector<TreeGroup> groups;
     NodePayloads payloads(P);
     for (std::size_t i = 0; i < q; ++i)

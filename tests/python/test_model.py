@@ -208,7 +208,7 @@ def test_schema_two_serializes_ordered_regions_and_one_message_per_pair():
     original = validate_trace_record(record)
     msg = next(m for s in record['supersteps'] for m in s['messages'] if m['regions'][0][3] >= 2)
     row, col, height, width = msg['regions'][0]
-    msg['regions'] = [[row, col, height, 1], [row, col + 1, height, width - 1]]
+    msg['regions'][0:1] = [[row, col, height, 1], [row, col + 1, height, width - 1]]
     assert validate_trace_record(record) == original
 
 

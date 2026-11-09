@@ -222,8 +222,10 @@ or reallocate its storage while a view is in use.
 
 The native Cannon body runs on P=q² logical nodes, node `(i, j)`
 having id `qi + j`, in q+1 supersteps. The default common route first converts
-A and B from row shards (two supersteps each) and converts C back afterwards
-(two more); P=1 conversions are local with no extra steps. The native body is:
+A and B from row shards in one exchange (each node pair sends one A+B message,
+received at the start of the skew superstep) and converts C back afterwards
+(two more), so the full route takes q+4 supersteps. P=1 has no conversion and
+nothing to skew: zeroing C joins its single multiply superstep. The native body is:
 
 1. `skew`: each node starts with its owned A_ij and B_ij; C is initialized to zero. A_ij is sent
    to `(i, j - i)` and B_ij to `(i - j, j)`; row 0 of A and column 0 of B stay put.
@@ -271,7 +273,11 @@ the agreed positional order.
 
 `include/dmm/trace.hpp` holds trace/count types and model cost functions. Critical
 counts sum per-step maxima, with h=max(sent,received). The cost is
-T=w*W_crit+g*C_crit+l*S. No sleep emulates a network; saved traces support
+T=w*W_crit+g*C_crit+l*S. Layout runs finalize with delivery merging: a
+superstep that neither sends nor computes (only receives or copies) needs no
+barrier of its own, so its operations run first in the next superstep, under that
+step's label. Words and FLOPs are unchanged; only S drops. Receive-sum steps
+compute and stay separate. No sleep emulates a network; saved traces support
 parameter sweeps without repeating matrix arithmetic. See
 [system design](doc/docs/design.md) for the lifecycle and measurement boundaries.
 
@@ -413,7 +419,8 @@ accumulates into C, supports tile tails, and performs no allocation.
 `include/dmm/collectives.hpp` provides fixed binary-tree broadcast and sum
 reduction over disjoint ordered node groups. All groups share supersteps;
 messages and reduction FLOPs are recorded by BSP, including the final receive
-step. For each group, rank r has parent (r-1)/2. Singleton groups are no-ops.
+step (in layout runs a broadcast's final receive merges into the next superstep).
+For each group, rank r has parent (r-1)/2. Singleton groups are no-ops.
 
 Node payload ownership uses move-only `Buffer` from `include/dmm/detail/memory.hpp`.
 Allocate through `BspPlan::allocate_buffer` so local tiles,
@@ -425,10 +432,12 @@ memory requires a separate measurement.
 
 Common row shards and base-layer block conversion are provided by
 `include/dmm/redistribution.hpp`. Both directions copy real messages with global
-`ElementRegion` rectangles. Packing and output buffers use the node memory ledger.
+`ElementRegion` rectangles. Several matrices can share one conversion, one
+message per node pair; its components follow the order the route passes them
+(common A then B) in both the send parts and the receive targets. Packing and output buffers use the node memory ledger.
 `count_native(trace)` excludes exactly input/output conversion from the full
 trace, keeping the same actual padded dimensions. At n=16, P=16, the full path
-has S=11, F_total=8192, W_crit=512, C_total=2496 and C_crit=164; the native body
+has S=8, F_total=8192, W_crit=512, C_total=2496 and C_crit=164; the native body
 has S=5, C_total=1920 and C_crit=128. Both metrics come from the same execution;
 there is no standalone native-input mode.
 

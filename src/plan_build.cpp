@@ -1,6 +1,7 @@
 #include "dmm/plan.hpp"
 #include "dmm/detail/gemm.hpp"
 #include "dmm/matrix.hpp"
+#include <algorithm>
 #include <map>
 #include <tuple>
 
@@ -194,8 +195,42 @@ void BspPlan::add_receive(std::size_t s, std::size_t source, std::span<const Mat
     append(s, destination, 0, {sum ? Kind::ReceiveSum : Kind::Receive, {}, {}, {}, {}, id});
     receives_.push_back({s, source, destination, {targets.begin(), targets.end()}});
 }
-void BspPlan::finalize(std::size_t original, std::size_t padded, CoverageGrid grid) {
+void BspPlan::merge_delivery_steps() {
+    // Walk backwards so chains of delivery-only steps collapse into one successor.
+    for (auto s = steps_.size(); s-- > 1;) {
+        auto& step = steps_[s - 1];
+        auto& next = steps_[s];
+        bool idle = step.outgoing.empty();
+        for (std::size_t node = 0; idle && node < nodes(); ++node) {
+            idle = step.kernels[node].empty() && step.sends[node].empty();
+            for (const auto& op : step.copies[node])
+                idle = idle && op.kind != Kind::ReceiveSum;
+            // The successor cannot receive: nothing was sent to it. Keep a
+            // malformed schedule unmerged so finalize still rejects it.
+            for (const auto& op : next.copies[node])
+                idle = idle && op.kind != Kind::Receive && op.kind != Kind::ReceiveSum;
+        }
+        if (!idle)
+            continue;
+        for (std::size_t node = 0; node < nodes(); ++node) {
+            next.copies[node].insert(next.copies[node].begin(), step.copies[node].begin(),
+                                     step.copies[node].end());
+            next.stages[node] = std::max(next.stages[node], step.stages[node]);
+        }
+        steps_.erase(steps_.begin() + static_cast<std::ptrdiff_t>(s - 1));
+        trace_.supersteps.erase(trace_.supersteps.begin() + static_cast<std::ptrdiff_t>(s - 1));
+        for (auto& m : messages_)
+            if (m.step >= s)
+                --m.step;
+        for (auto& r : receives_)
+            if (r.step >= s)
+                --r.step;
+    }
+}
+void BspPlan::finalize(std::size_t original, std::size_t padded, CoverageGrid grid, bool merge_delivery) {
     building();
+    if (merge_delivery)
+        merge_delivery_steps();
     if (!original || padded < original || steps_.empty() || !grid.row_parts || !grid.inner_parts ||
         !grid.col_parts || padded % grid.row_parts || padded % grid.inner_parts || padded % grid.col_parts)
         throw std::invalid_argument("invalid matrix dimensions, phases or coverage partition");

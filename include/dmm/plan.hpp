@@ -76,7 +76,11 @@ class BspPlan {
     std::size_t owner(MatrixView view) const;
     std::span<float> buffer(BufferId id); // Host reset/gather; serialize with execute.
     Superstep add_superstep(Phase phase);
-    void finalize(std::size_t original_size, std::size_t padded_size, CoverageGrid product_grid);
+    // merge_delivery folds every superstep that neither sends nor computes into
+    // its successor: no message leaves it, so its closing barrier is redundant.
+    // Its receives and copies run first in the successor, under that label.
+    void finalize(std::size_t original_size, std::size_t padded_size, CoverageGrid product_grid,
+                  bool merge_delivery = false);
     RunTimings execute(Executor& executor);
     const Trace& trace() const;
 
@@ -116,6 +120,7 @@ class BspPlan {
     void add_receive(std::size_t step, std::size_t source, std::span<const MatrixView> targets, bool sum);
     bool overlaps(MatrixView a, MatrixView b) const;
     std::span<float> storage(MatrixView view);
+    void merge_delivery_steps();
     std::vector<std::shared_ptr<detail::MemoryLedger>> memory_;
     std::vector<Buffer> buffers_;
     std::vector<std::size_t> owners_;

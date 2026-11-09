@@ -7,6 +7,7 @@
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace {
@@ -71,9 +72,10 @@ TEST_P(TwoPointFiveDTest, HandlesZeroIdentityOnesAndCancellation) {
 }
 
 // Hand count for (P, c) = (8, 2), n = 8: q = 2, block b = 4, height h = 1,
-// one multiply round per layer. Input conversion sends P*q - q = 14 strips of
-// h*b words per matrix; replication/reduction move q*q*(c-1) = 4 tiles; the
-// skew moves 2*c*(q*q - q) = 8 tiles; the single multiply round never sends.
+// one multiply round per layer. Input conversion sends P*q - q = 14 messages,
+// each bundling an A and a B strip of h*b words; replication/reduction move
+// q*q*(c-1) = 4 tiles; the skew moves 2*c*(q*q - q) = 8 tiles; the single
+// multiply round never sends. Delivery-only steps join their successors.
 TEST_P(TwoPointFiveDTest, MatchesHandComputedCommunication) {
     auto executor = dmm::make_executor(GetParam());
     dmm::Matrix<float> a(8), b(8);
@@ -86,13 +88,9 @@ TEST_P(TwoPointFiveDTest, MatchesHandComputedCommunication) {
     const auto flops = 2 * words * 4u;      // 2*b^3 per product
     ASSERT_EQ(trace.nodes, 8u);
     const std::vector<dmm::Counts> expected{
-        {1, 0, 0, 14 * strip, 4 * strip, 14},  // input conversion A, sends
-        {1, 0, 0, 0, 0, 0},                    // input conversion A, receives
-        {1, 0, 0, 14 * strip, 4 * strip, 14},  // input conversion B, sends
-        {1, 0, 0, 0, 0, 0},                    // input conversion B, receives
-        {1, 0, 0, 4 * 2 * words, 2 * words, 4}, // replication, roots send
-        {1, 0, 0, 0, 0, 0},                    // replication, leaves receive
-        {1, 0, 0, 8 * words, 2 * words, 8},    // skew
+        {1, 0, 0, 28 * strip, 8 * strip, 14},  // input conversion, A+B sends
+        {1, 0, 0, 4 * 2 * words, 2 * words, 4}, // conversion receives; replication, roots send
+        {1, 0, 0, 8 * words, 2 * words, 8},    // replication leaves receive; skew
         {1, 8 * flops, flops, 0, 0, 0},        // multiply
         {1, 0, 0, 4 * words, words, 4},        // reduction, leaves send
         {1, 4 * words, words, 0, 0, 0},        // reduction, roots receive_sum
@@ -103,8 +101,8 @@ TEST_P(TwoPointFiveDTest, MatchesHandComputedCommunication) {
     for (std::size_t s = 0; s < expected.size(); ++s)
         expect_work_and_communication(dmm::count(trace.supersteps[s]), expected[s]);
     expect_work_and_communication(
-        dmm::count(trace), (dmm::Counts{12, 8 * flops + 4 * words, flops + words,
-                                        488, 128, 58}));
+        dmm::count(trace), (dmm::Counts{8, 8 * flops + 4 * words, flops + words,
+                                        488, 128, 44}));
 }
 
 // Hand count for (P, c) = (4, 1), n = 8: q = 2, block b = 4, height h = 2,
@@ -118,13 +116,10 @@ TEST_P(TwoPointFiveDTest, DegenerateReplicationMatchesCannon) {
     auto [product, trace] = dmm::matmul_traced(a, b, *executor, "2.5d", 4, 1);
     EXPECT_NO_THROW(dmm::validate(product, constant_reference(8, 8)));
     const auto words = 16u, strip = 8u, flops = 2 * words * 4u;
-    ASSERT_EQ(trace.supersteps.size(), 9u);
+    ASSERT_EQ(trace.supersteps.size(), 6u);
     const std::vector<dmm::Counts> expected{
-        {1, 0, 0, 4 * strip, strip, 4},   // input conversion A, sends
-        {1, 0, 0, 0, 0, 0},
-        {1, 0, 0, 4 * strip, strip, 4},   // input conversion B, sends
-        {1, 0, 0, 0, 0, 0},
-        {1, 0, 0, 4 * words, 2 * words, 4},   // skew
+        {1, 0, 0, 8 * strip, 2 * strip, 4},   // input conversion, A+B sends
+        {1, 0, 0, 4 * words, 2 * words, 4},   // conversion receives; skew
         {1, 4 * flops, flops, 8 * words, 2 * words, 8}, // multiply, round 0
         {1, 4 * flops, flops, 0, 0, 0},       // multiply, round 1
         {1, 0, 0, 4 * strip, strip, 4},   // output conversion, sends
@@ -133,7 +128,7 @@ TEST_P(TwoPointFiveDTest, DegenerateReplicationMatchesCannon) {
     for (std::size_t s = 0; s < expected.size(); ++s)
         expect_work_and_communication(dmm::count(trace.supersteps[s]), expected[s]);
     expect_work_and_communication(dmm::count(trace),
-                                  (dmm::Counts{9, 8 * flops, 2 * flops, 288, 88, 24}));
+                                  (dmm::Counts{6, 8 * flops, 2 * flops, 288, 88, 20}));
     // The c = 1 route must be Cannon's route with identical counts.
     const auto cannon = dmm::matmul_traced(a, b, *executor, "cannon", 4, 1).trace;
     const auto left = dmm::count(trace), right = dmm::count(cannon);
@@ -183,15 +178,13 @@ TEST_P(TwoPointFiveDTest, UsesConversionReplicationAndReductionPhases) {
         return result;
     };
     EXPECT_EQ(labels(8, 2),
-              (std::vector<std::string>{"input_conversion", "input_conversion", "input_conversion",
-                                        "input_conversion", "replication", "replication", "skew",
-                                        "multiply", "reduction", "reduction", "output_conversion",
+              (std::vector<std::string>{"input_conversion", "replication", "skew", "multiply",
+                                        "reduction", "reduction", "output_conversion",
                                         "output_conversion"}));
     EXPECT_EQ(labels(4, 1),
-              (std::vector<std::string>{"input_conversion", "input_conversion", "input_conversion",
-                                        "input_conversion", "skew", "multiply", "multiply",
+              (std::vector<std::string>{"input_conversion", "skew", "multiply", "multiply",
                                         "output_conversion", "output_conversion"}));
-    EXPECT_EQ(labels(1, 1), (std::vector<std::string>{"skew", "multiply"}));
+    EXPECT_EQ(labels(1, 1), (std::vector<std::string>{"multiply"}));
 }
 
 INSTANTIATE_TEST_SUITE_P(Workers, TwoPointFiveDTest, ::testing::Values(0, 2),

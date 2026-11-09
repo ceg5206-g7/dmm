@@ -31,7 +31,7 @@ PreparedMatmul::PreparedMatmul(Matrix<float> a, Matrix<float> b, std::size_t P, 
         if (a_id == b_id || a_id == c_id || b_id == c_id)
             throw std::invalid_argument("input/output row buffers must be distinct");
     }
-    plan_.finalize(a_.size, config_.padded_size, definition_.product_grid);
+    plan_.finalize(a_.size, config_.padded_size, definition_.product_grid, true);
 }
 RunTimings PreparedMatmul::execute_into(std::span<float> output, Executor& executor) {
     if (output.size() != a_.values.size())

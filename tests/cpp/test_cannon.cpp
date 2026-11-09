@@ -111,8 +111,10 @@ TEST(CannonDispatchTest, UsesThreePreparedBatchesPerLogicalSuperstep) {
     std::fill(b.values.begin(), b.values.end(), 1);
     const auto result = dmm::matmul_traced(a, b, executor);
     EXPECT_NO_THROW(dmm::validate(result.product, constant_reference(4, 4)));
-    EXPECT_EQ(dmm::count(result.trace).supersteps, 11u);
-    EXPECT_EQ(executor.batches, (std::vector<std::size_t>(3 * 11, 16)));
+    // One A+B conversion exchange, the skew (which also consumes the conversion
+    // messages), four rounds, then the output conversion's send and receive.
+    EXPECT_EQ(dmm::count(result.trace).supersteps, 8u);
+    EXPECT_EQ(executor.batches, (std::vector<std::size_t>(3 * 8, 16)));
 }
 
 class CannonTraceTest : public ::testing::TestWithParam<std::size_t> {};
@@ -228,13 +230,41 @@ TEST(ConfigurableCannonTest, MatchesReferenceAndCountsAcrossGrids) {
         EXPECT_NO_THROW(dmm::validate(result.product, expected));
         EXPECT_EQ(result.trace.nodes, P);
         const auto counts = dmm::count_native(result.trace);
-        EXPECT_EQ(counts.supersteps, q + 1);
+        // P = 1 has nothing to skew: zeroing C joins the single multiply step.
+        EXPECT_EQ(counts.supersteps, q == 1 ? 1 : q + 1);
         EXPECT_EQ(counts.total_flops, 2 * n * n * n);
         EXPECT_EQ(counts.critical_flops, counts.total_flops / P);
         EXPECT_EQ(counts.messages, 2 * (q - 1) * (q + P));
         EXPECT_EQ(counts.total_words, counts.messages * words);
         EXPECT_EQ(counts.critical_words, q == 1 ? 0 : 2 * q * words);
     }
+}
+
+// P = 1 folds the zeroing skew into the single multiply superstep; the merged
+// copy batch must clear C before the GEMM accumulates into it.
+TEST(ConfigurableCannonTest, MergedZeroingRunsBeforeTheMultiplyStep) {
+    constexpr std::size_t n = 4;
+    dmm::BspPlan plan(1);
+    const auto definition = dmm::build_cannon(plan, {n, 1, 1});
+    plan.finalize(n, n, definition.product_grid, true);
+    const auto fill_rows = [&](dmm::MatrixView view, float value) {
+        auto data = plan.buffer(view.buffer).subspan(view.offset);
+        for (std::size_t row = 0; row < view.rows; ++row)
+            std::fill_n(data.data() + row * view.stride, view.cols, value);
+    };
+    fill_rows(definition.input_a_rows.front(), 1.f);
+    fill_rows(definition.input_b_rows.front(), 1.f);
+    fill_rows(definition.output_c_rows.front(), 1e9f);
+    dmm::SerialExecutor executor;
+    plan.execute(executor);
+    EXPECT_EQ(dmm::count(plan.trace()).supersteps, 1u);
+    std::vector<float> product(n * n);
+    const auto view = definition.output_c_rows.front();
+    const auto data = plan.buffer(view.buffer);
+    for (std::size_t row = 0; row < view.rows; ++row)
+        for (std::size_t col = 0; col < view.cols; ++col)
+            product[row * n + col] = data[view.offset + row * view.stride + col];
+    EXPECT_EQ(product, (std::vector<float>(n * n, static_cast<float>(n))));
 }
 
 TEST(GridConfigTest, ValidatesTwoAndTwoPointFiveDimensionalGrids) {
