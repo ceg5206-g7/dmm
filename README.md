@@ -369,7 +369,8 @@ at import, as in `matmul`. Import `dmm` before NumPy for these limits to apply.
 
 The [dmm_doc repository](https://github.com/ceg5206-g7/dmm_doc) is checked out as
 the `doc/` submodule and follows the MkDocs structure used by `matmul/doc`.
-It covers usage, Python/C++ architecture, Cannon, measurement rules and APIs.
+It covers all three layouts, the formal experiment results, measurement rules
+and API references. [Published documentation](https://ceg5206-g7.github.io/dmm_doc/)
 
 ```sh
 git submodule update --init --recursive
