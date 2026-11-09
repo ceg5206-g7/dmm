@@ -10,7 +10,7 @@ from pathlib import Path
 
 from dmm import _native
 from dmm.benchmark import source_revision
-from dmm.config import validate_case
+from dmm.config import REPLICATED_LAYOUTS, validate_case
 from dmm._native import (Trace, SuperstepRecord, MessageRecord, ElementRegion,
                          ProductRecord, ProductRegion, CoverageGrid, Counts,
                          count, count_native, bsp_cost, validate_coverage)
@@ -177,9 +177,11 @@ def validate_trace_record(record):
             native_steps.append(counts)
     if len(seen) != parts[0] * parts[1] * parts[2]:
         raise ValueError("missing executed product coverage")
-    if case["layout"] != "ring" and P > 1 and not {"input_conversion", "output_conversion"} <= per_phase.keys():
+    # Ring works on row shards; direct 2.5D fuses conversion into replication/reduction.
+    fused = case["layout"] == "ring" or (case["layout"] == "2.5d-direct" and case["c"] > 1)
+    if not fused and P > 1 and not {"input_conversion", "output_conversion"} <= per_phase.keys():
         raise ValueError("matrix trace is missing common input/output conversion")
-    if case["layout"] == "2.5d" and case["c"] > 1 and not {"replication", "reduction"} <= per_phase.keys():
+    if case["layout"] in REPLICATED_LAYOUTS and case["c"] > 1 and not {"replication", "reduction"} <= per_phase.keys():
         raise ValueError("replicated matrix trace is missing replication/reduction")
     result = {name: _merge(values) for name, values in per_phase.items()}
     result["end_to_end"], result["native"] = _merge(all_steps), _merge(native_steps)

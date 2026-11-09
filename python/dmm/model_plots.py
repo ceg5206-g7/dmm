@@ -8,8 +8,12 @@ def plot_model(rows, phases, choices, config, output):
     from matplotlib.figure import Figure
     from matplotlib.patches import Patch
 
-    colors = ["#3b82f6", "#16a34a", "#a855f7", "#f59e0b", "#d1d5db"]
-    labels = ["1D ring", "Cannon", "2.5D", "tie", "infeasible"]
+    colors = ["#3b82f6", "#16a34a", "#a855f7", "#db2777", "#f59e0b", "#d1d5db"]
+    labels = ["1D ring", "Cannon", "2.5D", "2.5D direct", "tie", "infeasible"]
+    layouts = ("ring", "cannon", "2.5d", "2.5d-direct")
+    codes = {name: index for index, name in enumerate(layouts)}
+    tie_code, infeasible_code = len(layouts), len(layouts) + 1
+    cell_text = ["1D", "2D", "2.5D", "2.5D-d", "tie", "\u00d7"]
     ps, gammas = sorted({c["P"] for c in config.cases}), config.gammas
     columns = list(product(config.lambdas, config.budgets))
     figure = Figure(figsize=(4 * len(columns), 2.8 * len(config.sizes)), layout="constrained")
@@ -25,20 +29,20 @@ def plot_model(rows, phases, choices, config, output):
                 cell, text = [], []
                 for gamma in gammas:
                     best = index[n, P, gamma, latency, mu]["best"]
-                    code = (4 if best == "infeasible" else 3 if "|" in best else
-                            0 if best.startswith("ring(") else 1 if best.startswith("cannon(") else 2)
+                    code = (infeasible_code if best == "infeasible"
+                            else tie_code if "|" in best else codes[best.split("(")[0]])
                     cell.append(code)
-                    text.append(["1D", "2D", "2.5D", "tie", "×"][code])
+                    text.append(cell_text[code])
                 cells.append(cell)
                 names.append(text)
-            ax.imshow(cells, cmap=ListedColormap(colors), vmin=0, vmax=4, aspect="auto")
+            ax.imshow(cells, cmap=ListedColormap(colors), vmin=0, vmax=len(colors) - 1, aspect="auto")
             for y, P in enumerate(ps):
                 for x, gamma in enumerate(gammas):
                     ax.text(x, y, names[y][x], ha="center", va="center", fontsize=8)
             ax.set(xticks=range(len(gammas)), xticklabels=gammas, yticks=range(len(ps)), yticklabels=ps,
                    xlabel="gamma (FLOPs/word)", ylabel="logical P",
                    title=f"n={n}, lambda={latency}, mu={mu}")
-    legend_indices = [i for i, name in enumerate(("ring", "cannon", "2.5d")) if name in available] + [3, 4]
+    legend_indices = [codes[name] for name in layouts if name in available] + [tie_code, infeasible_code]
     figure.legend([Patch(color=colors[i]) for i in legend_indices], [labels[i] for i in legend_indices],
                   loc="outside lower center", ncols=len(legend_indices))
     figure.savefig(output / "layout_selection.png", dpi=150)
@@ -72,9 +76,15 @@ def plot_model(rows, phases, choices, config, output):
 
     body = [native[r["layout"], r["P"], r["c"]]["T_model"] for r in sample]
     full = [r["T_model"] for r in sample]
+    conversion = [a - b for a, b in zip(full, body)]
     figure, ax = canvas("T_BSP / w0 (FLOP-equivalents)")
     ax.bar(xs, body, label="native body (including skew/replication/reduction)")
-    ax.bar(xs, [a - b for a, b in zip(full, body)], bottom=body, label="common input/output conversion")
+    ax.bar(xs, conversion, bottom=body, label="common input/output conversion")
+    if not any(value > 0 for value in conversion):
+        # A direct-2.5D-only profile has no conversion phases; say so instead of
+        # showing a legend entry over identically zero bars.
+        ax.text(0.5, 0.92, "no conversion phases (direct route)", transform=ax.transAxes,
+                ha="center", fontsize=8, bbox=dict(boxstyle="round", fc="white", ec="none", alpha=0.8))
     ax.legend(fontsize=8)
     figure.savefig(output / "conversion_breakdown.png", dpi=150)
 

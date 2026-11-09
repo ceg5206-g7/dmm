@@ -269,3 +269,40 @@ def test_real_legacy_schema_one_capture_replays_without_inputs_or_algorithm(tmp_
     assert int(row['F_total']) == 128
     assert float(row['T_model']) == metrics['end_to_end']['W_crit'] + 10 * metrics['end_to_end']['C_crit'] + 100 * metrics['end_to_end']['S']
     assert fixture.read_bytes() == raw
+
+
+def _replicated_record(layout):
+    from dmm.algorithms import two_point_five_d, two_point_five_d_direct
+    module = {"2.5d": two_point_five_d, "2.5d-direct": two_point_five_d_direct}[layout]
+    A = np.arange(64, dtype=np.float32).reshape(8, 8) / 64
+    with SerialExecutor() as executor:
+        C, trace = module.matmul_traced(A, A, executor, P=8, c=2)
+    np.testing.assert_allclose(C, A.astype(np.float64) @ A, atol=1e-4, rtol=1e-3)
+    return trace_record(trace, dict(layout=layout, P=8, c=2), 1,
+                        dict(max_abs_error=0, frobenius_relative_error=0), {"A": "0" * 64, "B": "1" * 64})
+
+
+def test_direct_replication_trace_fuses_conversion_and_moves_fewer_words():
+    """The ablation has no conversion phases, so native and end-to-end coincide."""
+    direct = validate_trace_record(_replicated_record("2.5d-direct"))
+    base = validate_trace_record(_replicated_record("2.5d"))
+    assert "input_conversion" not in direct and "output_conversion" not in direct
+    assert {"replication", "reduction"} <= direct.keys()
+    assert direct["native"] == direct["end_to_end"]
+    assert (direct["end_to_end"]["S"], direct["end_to_end"]["C_crit"]) == (5, 80)
+    assert (base["end_to_end"]["S"], base["end_to_end"]["C_crit"]) == (8, 128)
+    # The base-layer route still requires its conversion phases.
+    record = _replicated_record("2.5d")
+    record["supersteps"] = [s for s in record["supersteps"] if s["label"] != "output_conversion"]
+    with pytest.raises(ValueError, match="conversion"):
+        validate_trace_record(record)
+
+
+def test_direct_ablation_profile_extends_the_frozen_main_profile():
+    root = Path(__file__).parents[2] / "configs"
+    main, ablation = load_model_config(root / "model.yaml"), load_model_config(root / "model_direct.yaml")
+    extra = [case for case in ablation.cases if case not in main.cases]
+    assert extra == [dict(layout="2.5d-direct", P=64, c=4), dict(layout="2.5d-direct", P=256, c=4)]
+    assert [case for case in ablation.cases if case in main.cases] == main.cases
+    assert (ablation.sizes, ablation.gammas, ablation.lambdas, ablation.budgets) == (
+        main.sizes, main.gammas, main.lambdas, main.budgets)

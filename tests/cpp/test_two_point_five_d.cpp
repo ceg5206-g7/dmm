@@ -199,6 +199,89 @@ TEST_P(TwoPointFiveDTest, UsesConversionReplicationAndReductionPhases) {
     EXPECT_EQ(labels(1, 1), (std::vector<std::string>{"multiply"}));
 }
 
+TEST_P(TwoPointFiveDTest, DirectRouteMatchesFP64ReferenceAndCoversEveryProductOnce) {
+    auto executor = dmm::make_executor(GetParam());
+    std::mt19937 random(5206);
+    std::uniform_real_distribution<float> value(-1, 1);
+    for (const auto [P, c, q] : std::vector<std::tuple<std::size_t, std::size_t, std::size_t>>{
+             {1, 1, 1}, {4, 1, 2}, {8, 2, 2}, {32, 2, 4}, {27, 3, 3}, {64, 4, 4}})
+        for (std::size_t n : {4, 12, 33}) {
+            SCOPED_TRACE(::testing::Message() << "P=" << P << " c=" << c << " size=" << n);
+            dmm::Matrix<float> a(n), b(n);
+            for (auto& x : a.values)
+                x = value(random);
+            for (auto& x : b.values)
+                x = value(random);
+            const auto [product, trace] = dmm::matmul_traced(a, b, *executor, "2.5d-direct", P, c);
+            EXPECT_NO_THROW(dmm::validate(product, reference(a, b)));
+            EXPECT_NO_THROW(dmm::validate_coverage(trace));
+            std::vector<std::size_t> seen(q * q * q);
+            for (const auto& step : trace.supersteps)
+                for (const auto& record : step.products)
+                    ++seen[(record.product.i * q + record.product.k) * q + record.product.j];
+            for (auto count : seen)
+                EXPECT_EQ(count, 1u);
+        }
+}
+
+// Hand count for the direct route at (P, c) = (8, 2), n = 8: q = 2, b = 4,
+// h = 1, so tile row i collects row shards [4i, 4i + 4). Shards 0, 1, 6 and 7
+// own a tile they feed (nodes 0, 1, 6, 7) and copy that piece locally.
+// Replication: 8 shards x 4 tiles - 4 local = 28 messages of an A and a B
+// strip (8 words); shards 2..5 send 4 and tiles 2..5 receive 4, so h = 32.
+// The skew and multiply match the base-layer route. Reduce-scatter: 28 strips
+// of C (4 words), h = 16; each shard then adds (c - 1) strips per column block.
+TEST_P(TwoPointFiveDTest, DirectRouteMatchesHandComputedCommunicationAndMemory) {
+    auto executor = dmm::make_executor(GetParam());
+    dmm::Matrix<float> a(8), b(8);
+    std::fill(a.values.begin(), a.values.end(), 1);
+    std::fill(b.values.begin(), b.values.end(), 1);
+    auto [product, trace] = dmm::matmul_traced(a, b, *executor, "2.5d-direct", 8, 2);
+    EXPECT_NO_THROW(dmm::validate(product, constant_reference(8, 8)));
+    const auto words = 16u, strip = 4u, flops = 2 * words * 4u, sums = 2 * strip;
+    const std::vector<dmm::Counts> expected{
+        {1, 0, 0, 28 * 2 * strip, 8 * strip, 28}, // replication: shards send to all layers
+        {1, 0, 0, 8 * words, 2 * words, 8},       // replication receives; skew
+        {1, 8 * flops, flops, 0, 0, 0},           // multiply
+        {1, 0, 0, 28 * strip, 4 * strip, 28},     // reduce-scatter sends
+        {1, 8 * sums, sums, 0, 0, 0},             // row shards sum the layers
+    };
+    ASSERT_EQ(trace.supersteps.size(), expected.size());
+    for (std::size_t s = 0; s < expected.size(); ++s)
+        expect_work_and_communication(dmm::count(trace.supersteps[s]), expected[s]);
+    const auto all = dmm::count(trace);
+    expect_work_and_communication(all, (dmm::Counts{5, 8 * flops + 8 * sums, flops + sums, 464, 80, 64}));
+    // No conversion phases: the native body is the whole route.
+    EXPECT_EQ(dmm::count_native(trace), all);
+    std::vector<std::string> labels;
+    for (const auto& step : trace.supersteps)
+        labels.push_back(step.label);
+    EXPECT_EQ(labels, (std::vector<std::string>{"replication", "skew", "multiply", "reduction", "reduction"}));
+    // Node 0 copies its own pieces into its tiles in the send step: A/B rows (16)
+    // and tiles (32), 24 words out and 24 in. Node 4 (layer 1) receives its
+    // tiles in the skew, where it also sends and receives two tiles.
+    const auto peaks = [&](std::size_t node) {
+        std::vector<std::size_t> result;
+        for (const auto& step : trace.supersteps)
+            result.push_back(step.peak_words[node]);
+        return result;
+    };
+    EXPECT_EQ(peaks(0), (std::vector<std::size_t>{96, 72, 48, 48, 20}));
+    EXPECT_EQ(peaks(4), (std::vector<std::size_t>{80, 112, 80, 48, 24}));
+    EXPECT_EQ(all.peak_words, 112u);
+}
+
+TEST_P(TwoPointFiveDTest, DirectRouteWithoutReplicationIsCannon) {
+    auto executor = dmm::make_executor(GetParam());
+    dmm::Matrix<float> a(8), b(8);
+    std::fill(a.values.begin(), a.values.end(), 1);
+    std::fill(b.values.begin(), b.values.end(), 1);
+    const auto direct = dmm::matmul_traced(a, b, *executor, "2.5d-direct", 4, 1).trace;
+    const auto cannon = dmm::matmul_traced(a, b, *executor, "cannon", 4, 1).trace;
+    EXPECT_EQ(dmm::count(direct), dmm::count(cannon));
+    EXPECT_EQ(direct.peak_words, cannon.peak_words);
+}
+
 INSTANTIATE_TEST_SUITE_P(Workers, TwoPointFiveDTest, ::testing::Values(0, 2),
                          ::testing::PrintToStringParamName());
 

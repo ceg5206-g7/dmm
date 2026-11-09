@@ -8,7 +8,9 @@ from pathlib import Path
 import yaml
 import numpy as np
 
-LAYOUT_MODULES = {"ring": "ring", "cannon": "cannon", "2.5d": "two_point_five_d"}
+LAYOUT_MODULES = {"ring": "ring", "cannon": "cannon", "2.5d": "two_point_five_d",
+                  "2.5d-direct": "two_point_five_d_direct"}
+REPLICATED_LAYOUTS = ("2.5d", "2.5d-direct")
 MODES = ("sequential", "threaded")
 
 
@@ -53,7 +55,7 @@ def validate_case(case: dict) -> None:
     for name in ("P", "c"):
         if type(case[name]) is not int or case[name] <= 0:
             raise ValueError(f"case {name} must be a positive integer")
-    if case["layout"] != "2.5d" and case["c"] != 1:
+    if case["layout"] not in REPLICATED_LAYOUTS and case["c"] != 1:
         raise ValueError(f"{case['layout']} requires c = 1")
     if case["layout"] != "ring":
         _native.grid_size(case["P"], case["c"])

@@ -190,10 +190,11 @@ then `uv run dmm analyze --input results/benchmark_mixed.csv`.
 Each case requires exactly `layout`, `P`, and `c`; duplicate cases and old global
 `algorithms`/`P`/`c` keys are rejected. Convert an old `algorithms: [cannon], P: 64, c: 1`
 configuration to `cases: [{layout: cannon, P: 64, c: 1}]`.
-Valid layouts are `ring`, `cannon`, and `2.5d`. Ring requires c=1; Cannon requires
-c=1 and square P; 2.5D requires P=c*q*q and c dividing q. For example a
+Valid layouts are `ring`, `cannon`, `2.5d` and the `2.5d-direct` ablation. Ring
+requires c=1; Cannon requires c=1 and square P; both 2.5D layouts require P=c*q*q
+and c dividing q. For example a
 `{layout: 2.5d, P: 64, c: 4}` case is valid and runs on c=4 layers of 4 × 4 grids.
-All three layouts run. Missing algorithm modules and invalid configurations fail
+All four layouts run. Missing algorithm modules and invalid configurations fail
 during preflight, before dataset loading or output creation; no case is silently
 skipped.
 
@@ -251,6 +252,21 @@ full Cannon schedule with skew offset l·q/c, so every (i,k,j) product runs
 exactly once with q/c products per node. Partial C tiles sum to the base layer
 (`reduction`) before the tiles convert back to row shards. For c=1 the route
 degenerates to Cannon's counts exactly.
+
+`2.5d-direct` is an ablation of the proposal's base-layer route with the same
+layer-Cannon body. Because the common input is row-sharded over all P nodes,
+every row shard sends its A+B pieces straight to the matching tiles on all c
+layers (`replication`, one exchange of 2c·n²/P words per node). Each layer's
+partial C tiles then go straight to the row-shard owners, which sum the c
+contributions per block (`reduction`, a reduce-scatter of c·n²/P words per
+node). This removes the base-layer gather, both binary trees and the output
+conversion. For c > 1 there are no conversion phases, so its native and
+end-to-end counts coincide, as for the ring: compare it end to end. With c=1 it
+instead delegates to the base-layer route and is Cannon, conversion phases
+included, so native and end-to-end differ there as they do for Cannon.
+At P=256, c=4 it needs 6 supersteps and C_crit=28·n²/P, versus 11 and 64·n²/P
+for `2.5d` and 20 and 34.8·n²/P for Cannon.
+`configs/model_direct.yaml` is the proposal profile plus the two direct cases.
 
 Accumulation order is fixed for a given padded layout; padding can change the
 block schedule. Results are verified against the independent FP64 reference.
@@ -375,7 +391,7 @@ at import. Import `dmm` before NumPy for these limits to apply.
 
 The [dmm_doc repository](https://github.com/ceg5206-g7/dmm_doc) is checked out as
 the `doc/` submodule and builds with MkDocs.
-It covers all three layouts, the formal experiment results, measurement rules
+It covers all four layouts, the formal experiment results, measurement rules
 and API references. [Published documentation](https://ceg5206-g7.github.io/dmm_doc/)
 
 ```sh
@@ -408,7 +424,7 @@ communication counts and accumulation order, FP64
 comparisons, different block sizes, zero/identity/ones/cancellation, repeated runs,
 worker errors, invalid arrays, output ownership and concurrent calls, dataset
 validation, executor lifecycle, warmup/timing boundaries and result comparability.
-Layout names are `ring`, `cannon` and `2.5d`. Missing algorithm modules fail
+Layout names are `ring`, `cannon`, `2.5d` and `2.5d-direct`. Missing algorithm modules fail
 before setup.
 Ring and 2.5D add hand-computed communication counts, product-coverage and
 phase-sequence checks, and a c=1 equivalence check against Cannon.

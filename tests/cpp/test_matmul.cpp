@@ -132,6 +132,7 @@ TEST(MatmulTest, RegistrySelectsEveryLayoutAndRejectsUnknownNames) {
     EXPECT_EQ(dmm::select_builder("cannon"), dmm::build_cannon);
     EXPECT_EQ(dmm::select_builder("ring"), dmm::build_ring);
     EXPECT_EQ(dmm::select_builder("2.5d"), dmm::build_two_point_five_d);
+    EXPECT_EQ(dmm::select_builder("2.5d-direct"), dmm::build_two_point_five_d_direct);
     for (const auto* layout : {"fox", "ring2", ""})
         EXPECT_THROW(dmm::select_builder(layout), std::invalid_argument);
 }
