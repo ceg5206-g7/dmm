@@ -128,7 +128,7 @@ RunTimings BspPlan::execute(Executor& executor) {
         // while receivers already hold incoming ones. Then ownership moves over.
         std::fill(incoming_words_.begin(), incoming_words_.end(), 0);
         for (auto id : step.outgoing)
-            incoming_words_[messages_[id].destination] += buffers_[messages_[id].storage.index_].size();
+            incoming_words_[messages_[id].destination] += buffers_[messages_[id].storage.index_].capacity();
         for (std::size_t node = 0; node < nodes(); ++node)
             memory_[node]->observe(incoming_words_[node]);
         for (auto id : step.outgoing) {

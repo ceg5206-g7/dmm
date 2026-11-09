@@ -50,6 +50,9 @@ class Buffer {
     }
     ~Buffer() { release(); }
     std::size_t size() const noexcept { return values_.size(); }
+    // Ledger charges use the allocated capacity; report the same words as size
+    // and capacity agree for the exact-size vectors plans allocate.
+    std::size_t capacity() const noexcept { return values_.capacity(); }
     bool empty() const noexcept { return values_.empty(); }
     float* data() noexcept { return values_.data(); }
     const float* data() const noexcept { return values_.data(); }
