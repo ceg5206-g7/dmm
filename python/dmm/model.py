@@ -7,6 +7,7 @@ import json
 from math import isclose, isfinite
 from pathlib import Path
 
+from dmm import _native
 from dmm.benchmark import _validate_product, source_revision
 from dmm.config import LAYOUT_MODULES, ModelConfig
 from dmm.datasets import load_manifest, load_pair, load_reference
@@ -90,7 +91,9 @@ def build_model_tables(records, config):
                           for phase, counts in metrics.items() if phase != "end_to_end")
     for n, P, gamma, latency, mu in product(config.sizes, sorted({c["P"] for c in config.cases}),
                                            config.gammas, config.lambdas, config.budgets):
-        cap = mu * n * n / P
+        # peak_words counts zero-padded payload, so the budget uses the padded
+        # dimension of this problem/cell rather than the unpadded original size.
+        cap = mu * _native.padded_size(n, P) ** 2 / P
         candidates, native_candidates, impossible = [], [], []
         for record, metrics in records:
             if (record["n"], record["P"]) != (n, P):

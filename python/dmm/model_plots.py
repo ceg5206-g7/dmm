@@ -94,11 +94,11 @@ def plot_model(rows, phases, choices, config, output):
     ax.legend()
     figure.savefig(output / "native_vs_common.png", dpi=150)
 
-    figure, ax = canvas("peak payload / (n²/P) words", f"Logical-node payload memory: n={n}")
-    ratios = [r["peak_words"] * r["P"] / n**2 for r in sample]
+    figure, ax = canvas("peak payload / (n_padded²/P) words", f"Logical-node payload memory: n={n}")
+    ratios = [r["peak_words"] * r["P"] / r["n_padded"]**2 for r in sample]
     ax.bar(xs, ratios, color=["#dc2626" if ratio > max(config.budgets) else "#2563eb" for ratio in ratios])
     for i, mu in enumerate(config.budgets):
-        ax.axhline(mu, linestyle="--", color=colors[(i + 2) % len(colors)], label=f"M_cap = {mu} n²/P")
+        ax.axhline(mu, linestyle="--", color=colors[(i + 2) % len(colors)], label=f"M_cap = {mu} n_padded²/P")
     for x, ratio, r in zip(xs, ratios, sample):
         ax.annotate(f"{r['peak_words']} words", (x, ratio), xytext=(0, 3), textcoords="offset points",
                     ha="center", fontsize=7)
