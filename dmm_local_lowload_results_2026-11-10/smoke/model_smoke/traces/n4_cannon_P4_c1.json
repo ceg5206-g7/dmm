@@ -1,0 +1,494 @@
+{
+  "schema": 2,
+  "n": 4,
+  "n_padded": 4,
+  "layout": "cannon",
+  "P": 4,
+  "c": 1,
+  "H": 1,
+  "coverage": [
+    2,
+    2,
+    2
+  ],
+  "peak_words": [
+    30,
+    30,
+    30,
+    30
+  ],
+  "correctness": {
+    "max_abs_error": 0.008141938655171543,
+    "frobenius_relative_error": 4.001097743448303e-08
+  },
+  "inputs_sha256": {
+    "A": "d69b9b11eb3b01653564eaa2f8a02fb78e19b320b7d5fd5f84470a01f608a65a",
+    "B": "286a660bde6cb9222f30aa2adc2b6f644c17341446e8f1893448351b2e65bb21"
+  },
+  "supersteps": [
+    {
+      "label": "input_conversion",
+      "flops": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "peak_words": [
+        16,
+        16,
+        16,
+        16
+      ],
+      "messages": [
+        {
+          "source": 0,
+          "destination": 1,
+          "words": 4,
+          "regions": [
+            [
+              0,
+              2,
+              1,
+              2
+            ],
+            [
+              0,
+              2,
+              1,
+              2
+            ]
+          ]
+        },
+        {
+          "source": 1,
+          "destination": 0,
+          "words": 4,
+          "regions": [
+            [
+              1,
+              0,
+              1,
+              2
+            ],
+            [
+              1,
+              0,
+              1,
+              2
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 3,
+          "words": 4,
+          "regions": [
+            [
+              2,
+              2,
+              1,
+              2
+            ],
+            [
+              2,
+              2,
+              1,
+              2
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 2,
+          "words": 4,
+          "regions": [
+            [
+              3,
+              0,
+              1,
+              2
+            ],
+            [
+              3,
+              0,
+              1,
+              2
+            ]
+          ]
+        }
+      ],
+      "products": []
+    },
+    {
+      "label": "skew",
+      "flops": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "peak_words": [
+        18,
+        22,
+        22,
+        30
+      ],
+      "messages": [
+        {
+          "source": 1,
+          "destination": 3,
+          "words": 4,
+          "regions": [
+            [
+              0,
+              2,
+              2,
+              2
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 3,
+          "words": 4,
+          "regions": [
+            [
+              2,
+              0,
+              2,
+              2
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 2,
+          "words": 4,
+          "regions": [
+            [
+              2,
+              2,
+              2,
+              2
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 1,
+          "words": 4,
+          "regions": [
+            [
+              2,
+              2,
+              2,
+              2
+            ]
+          ]
+        }
+      ],
+      "products": []
+    },
+    {
+      "label": "multiply",
+      "flops": [
+        16,
+        16,
+        16,
+        16
+      ],
+      "peak_words": [
+        30,
+        30,
+        30,
+        30
+      ],
+      "messages": [
+        {
+          "source": 0,
+          "destination": 1,
+          "words": 4,
+          "regions": [
+            [
+              0,
+              0,
+              2,
+              2
+            ]
+          ]
+        },
+        {
+          "source": 0,
+          "destination": 2,
+          "words": 4,
+          "regions": [
+            [
+              0,
+              0,
+              2,
+              2
+            ]
+          ]
+        },
+        {
+          "source": 1,
+          "destination": 0,
+          "words": 4,
+          "regions": [
+            [
+              0,
+              2,
+              2,
+              2
+            ]
+          ]
+        },
+        {
+          "source": 1,
+          "destination": 3,
+          "words": 4,
+          "regions": [
+            [
+              2,
+              2,
+              2,
+              2
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 3,
+          "words": 4,
+          "regions": [
+            [
+              2,
+              2,
+              2,
+              2
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 0,
+          "words": 4,
+          "regions": [
+            [
+              2,
+              0,
+              2,
+              2
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 2,
+          "words": 4,
+          "regions": [
+            [
+              2,
+              0,
+              2,
+              2
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 1,
+          "words": 4,
+          "regions": [
+            [
+              0,
+              2,
+              2,
+              2
+            ]
+          ]
+        }
+      ],
+      "products": [
+        {
+          "node": 0,
+          "i": 0,
+          "k": 0,
+          "j": 0,
+          "m": 2,
+          "n": 2,
+          "inner": 2
+        },
+        {
+          "node": 1,
+          "i": 0,
+          "k": 1,
+          "j": 1,
+          "m": 2,
+          "n": 2,
+          "inner": 2
+        },
+        {
+          "node": 2,
+          "i": 1,
+          "k": 1,
+          "j": 0,
+          "m": 2,
+          "n": 2,
+          "inner": 2
+        },
+        {
+          "node": 3,
+          "i": 1,
+          "k": 0,
+          "j": 1,
+          "m": 2,
+          "n": 2,
+          "inner": 2
+        }
+      ]
+    },
+    {
+      "label": "multiply",
+      "flops": [
+        16,
+        16,
+        16,
+        16
+      ],
+      "peak_words": [
+        22,
+        22,
+        22,
+        22
+      ],
+      "messages": [],
+      "products": [
+        {
+          "node": 0,
+          "i": 0,
+          "k": 1,
+          "j": 0,
+          "m": 2,
+          "n": 2,
+          "inner": 2
+        },
+        {
+          "node": 1,
+          "i": 0,
+          "k": 0,
+          "j": 1,
+          "m": 2,
+          "n": 2,
+          "inner": 2
+        },
+        {
+          "node": 2,
+          "i": 1,
+          "k": 0,
+          "j": 0,
+          "m": 2,
+          "n": 2,
+          "inner": 2
+        },
+        {
+          "node": 3,
+          "i": 1,
+          "k": 1,
+          "j": 1,
+          "m": 2,
+          "n": 2,
+          "inner": 2
+        }
+      ]
+    },
+    {
+      "label": "output_conversion",
+      "flops": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "peak_words": [
+        10,
+        10,
+        10,
+        10
+      ],
+      "messages": [
+        {
+          "source": 1,
+          "destination": 0,
+          "words": 2,
+          "regions": [
+            [
+              0,
+              2,
+              1,
+              2
+            ]
+          ]
+        },
+        {
+          "source": 0,
+          "destination": 1,
+          "words": 2,
+          "regions": [
+            [
+              1,
+              0,
+              1,
+              2
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 2,
+          "words": 2,
+          "regions": [
+            [
+              2,
+              2,
+              1,
+              2
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 3,
+          "words": 2,
+          "regions": [
+            [
+              3,
+              0,
+              1,
+              2
+            ]
+          ]
+        }
+      ],
+      "products": []
+    },
+    {
+      "label": "output_conversion",
+      "flops": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "peak_words": [
+        8,
+        8,
+        8,
+        8
+      ],
+      "messages": [],
+      "products": []
+    }
+  ]
+}

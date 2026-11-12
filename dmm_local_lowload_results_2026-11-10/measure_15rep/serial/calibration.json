@@ -1,0 +1,25 @@
+{
+  "parameters_seconds": {
+    "w": 4.5258641242980955e-11,
+    "g": 4.430389404296875e-11,
+    "l": 8.85e-09
+  },
+  "iqr_seconds_per_unit": {
+    "w": 1.0270595550537109e-11,
+    "g": 8.575820922851563e-11,
+    "l": 7.049999999999987e-10
+  },
+  "H": 1,
+  "warmups": 5,
+  "repeats": 15,
+  "micro_sizes": [
+    32,
+    64,
+    96
+  ],
+  "method": "median/IQR of equally weighted normalized micro samples across sizes; frozen before any matrix run",
+  "compute": "critical local shared GEMM seconds/FLOP",
+  "copy": "critical local send+receive copy seconds/word",
+  "synchronization": "wall seconds/logical superstep with three empty blocking executor batches",
+  "caveat": "effective local emulator coefficients, not a measured network; no per-case refit"
+}

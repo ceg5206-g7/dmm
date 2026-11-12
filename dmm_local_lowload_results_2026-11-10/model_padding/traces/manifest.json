@@ -1,0 +1,109 @@
+{
+  "schema": 2,
+  "peak_semantics": "live-payload",
+  "superstep_semantics": "delivery-merged",
+  "settings": {
+    "data_dir": "/tmp/opencode/dmm_validation/data_padding",
+    "output_dir": "/tmp/opencode/dmm_validation/model_padding",
+    "cases": [
+      {
+        "layout": "ring",
+        "P": 64,
+        "c": 1
+      },
+      {
+        "layout": "cannon",
+        "P": 64,
+        "c": 1
+      },
+      {
+        "layout": "2.5d",
+        "P": 64,
+        "c": 4
+      }
+    ],
+    "sizes": [
+      17,
+      65,
+      257
+    ],
+    "group": 0,
+    "workers": 0,
+    "gammas": [
+      1
+    ],
+    "lambdas": [
+      100
+    ],
+    "budgets": [
+      8,
+      32
+    ]
+  },
+  "files": [
+    {
+      "name": "n17_ring_P64_c1.json",
+      "sha256": "e510630cd2a5e0cbe125aae26de745552b4edfb3c4d45a57456959f4d7f57b60"
+    },
+    {
+      "name": "n65_ring_P64_c1.json",
+      "sha256": "40db3c8416d97afa66b80d1e0c2c57cdd6882c6dbeefd02e52820d314fb53f0b"
+    },
+    {
+      "name": "n257_ring_P64_c1.json",
+      "sha256": "451618da8bdbeb691aed51476d5d02a24221869a7a101283488def951143645a"
+    },
+    {
+      "name": "n17_cannon_P64_c1.json",
+      "sha256": "8cd84572dacdebe145526583c867ac219cd9b678d947b9987c62ef815dc5bfd1"
+    },
+    {
+      "name": "n65_cannon_P64_c1.json",
+      "sha256": "f77e02433dfae7cf6d801d28a6655191d3be47d8dd8a969e0f5a10cb6de50149"
+    },
+    {
+      "name": "n257_cannon_P64_c1.json",
+      "sha256": "f6a740a94f6148c00a6463cc4353b9bac4fe63531d3400e11556c45237077d98"
+    },
+    {
+      "name": "n17_2.5d_P64_c4.json",
+      "sha256": "ff7e28178408ecf2500ecc3f3c339b73512cec1210a5d3ac16077a096b7ca348"
+    },
+    {
+      "name": "n65_2.5d_P64_c4.json",
+      "sha256": "f42bf7a327a5e6b7375a3ac68b974246af68202a0175e4b2b3249e577a66da76"
+    },
+    {
+      "name": "n257_2.5d_P64_c4.json",
+      "sha256": "e74dad008fe9a0df9e0636fd51a7e5042b5d94e42b82a1387ac7bb473e93faf8"
+    }
+  ],
+  "compiler": "16.2.0",
+  "build_type": "Release",
+  "git": {
+    "commit": "0b8b2b8df622842b03d3e398593a7c3504770e75",
+    "dirty": false
+  },
+  "correctness_sha256": "031a516285de7de312b802c5f1e0f2d1a2a6426cac00cecc5cecfc1f3f207cdd",
+  "validation_rule": "abs(error) <= 1e-4 + 1e-3 * abs(FP64 reference)",
+  "input_manifest": {
+    "seed": 5206,
+    "numpy_version": "2.5.4",
+    "groups": [
+      0
+    ],
+    "sizes": [
+      17,
+      65,
+      257
+    ],
+    "value_range": [
+      -1,
+      1
+    ],
+    "dtype": "float32",
+    "reference_dtype": "float64",
+    "reference": "numpy.matmul(float64)"
+  },
+  "purpose": "correctness/counting only; no statistical wall-clock measurements"
+}

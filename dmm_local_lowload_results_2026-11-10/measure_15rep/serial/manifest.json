@@ -1,0 +1,174 @@
+{
+  "schema": 1,
+  "settings": {
+    "data_dir": "/tmp/opencode/dmm_validation/data",
+    "output_dir": "/tmp/opencode/dmm_validation/measure_serial_15",
+    "cases": [
+      {
+        "layout": "cannon",
+        "P": 1,
+        "c": 1
+      },
+      {
+        "layout": "ring",
+        "P": 1,
+        "c": 1
+      }
+    ],
+    "sizes": [
+      256,
+      512,
+      1024
+    ],
+    "group": 0,
+    "workers": 0,
+    "warmups": 5,
+    "repeats": 15
+  },
+  "git": {
+    "commit": "0b8b2b8df622842b03d3e398593a7c3504770e75",
+    "dirty": false
+  },
+  "environment_before": {
+    "host": "DES-INT-48S",
+    "system": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "machine": "x86_64",
+    "processor": "x86_64",
+    "physical_cores": 10,
+    "logical_cpus": 20,
+    "compiler": "16.2.0",
+    "build_type": "Release",
+    "load_average": [
+      0.12109375,
+      0.22509765625,
+      0.1591796875
+    ],
+    "affinity_policy": "unbound persistent std::threads; static round-robin logical tasks; same policy for micro/full runs",
+    "affinity_mask": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19
+    ]
+  },
+  "environment_after": {
+    "host": "DES-INT-48S",
+    "system": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "machine": "x86_64",
+    "processor": "x86_64",
+    "physical_cores": 10,
+    "logical_cpus": 20,
+    "compiler": "16.2.0",
+    "build_type": "Release",
+    "load_average": [
+      0.19189453125,
+      0.23828125,
+      0.1640625
+    ],
+    "affinity_policy": "unbound persistent std::threads; static round-robin logical tasks; same policy for micro/full runs",
+    "affinity_mask": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19
+    ]
+  },
+  "artifacts_sha256": {
+    "correctness.csv": "909db623ae007eba32eea4070bef180a1f68d93f6d6e534d7f026877f2596559",
+    "calibration.json": "e61eb7cd43730b67914fafe0647a3940cdf885990f426db30cb8d19480bea629",
+    "measured_model.csv": "e581f69bcd14e0e73fa68693c0fff5f356545925e5759fc4aa83a0ecdc83cb85",
+    "samples.csv": "8e6bf458d0c0b149cb701ad11b62d3a93033a39d955ad8c192e03d728fdffc30",
+    "microbenchmarks.csv": "a494843e07cf55f87e8a67b48697fde77137b5588314468cfd74687f46d06067",
+    "heldout_residuals.png": "3959fff22433cc01149c129d56ce9c7f27d7748a27b574404411b006207019e0"
+  },
+  "trace_manifest_sha256": "16f5971d059a4fea41b5a8c965b32a6c1f55bea1be66081901e7c0d4b3556b6b",
+  "traces": [
+    {
+      "name": "n256_cannon_P1_c1.json",
+      "sha256": "f5d4b3f19a29a5f82efae155f53d5fca930f8d3bb8f26d81973f6e947ea25684"
+    },
+    {
+      "name": "n512_cannon_P1_c1.json",
+      "sha256": "c7b95ed4fe08edeb5a15efe322495a0c313265ba5bc91ed4cd009036a10f2959"
+    },
+    {
+      "name": "n1024_cannon_P1_c1.json",
+      "sha256": "a14bff2204b45f638eb90845e255c34833e32d9cba86dca0d3e8f0f76c279678"
+    },
+    {
+      "name": "n256_ring_P1_c1.json",
+      "sha256": "51e8c3fe0e08d4500284d2fd5d707299d63f21cfef7baec0f1c1b2e5ce46fd6a"
+    },
+    {
+      "name": "n512_ring_P1_c1.json",
+      "sha256": "afd3e7344af0a8ee93a369e7a1cd8102cd64d8263e797eb8eb402ceb22dec61f"
+    },
+    {
+      "name": "n1024_ring_P1_c1.json",
+      "sha256": "1a2f2362de1847b3e2743ec1916811c35180a9957a3788732477ad79c43bb39b"
+    }
+  ],
+  "executed_configurations": 6,
+  "input_manifest": {
+    "seed": 5206,
+    "numpy_version": "2.5.4",
+    "groups": [
+      0
+    ],
+    "sizes": [
+      256,
+      512,
+      1024
+    ],
+    "value_range": [
+      0,
+      255
+    ],
+    "dtype": "float32",
+    "reference_dtype": "float64",
+    "reference": "numpy.matmul(float64)"
+  },
+  "boundary": "common row-shard input to common row-shard output; includes packing/conversion/copies/zeroing/compute/scheduling; excludes allocation/host adapters/validation",
+  "implementation_sha256": {
+    "native": "9227fca6da0938b3cbafe551cbff254af356e9e7cb641131fa3c05eeeb0b2a56",
+    "measurement": "86476e7068bcde42560e9ee3cae23bd2522fdbc7a73513a4eaf915a424ee7e64",
+    "statistics": "0c991ad2e79209903d69c509dde2bb850300db9abaa66aba9abb768e5904d1a0"
+  },
+  "serial_baseline": null,
+  "performance_rule": "end_to_end only: gflops=2*n_original^3/(1e9*median_seconds); speedup=serial_P1_H1_seconds/median_seconds; parallel_efficiency=speedup/H; missing baseline stays blank",
+  "execution_rule": "measurement requires P<=H<=available physical cores; P>H is correctness/counting only",
+  "model_units": "T_model is FLOP-equivalents; T_model_seconds and t_measured are seconds",
+  "holdout": "full matrix sizes never used to fit w/g/l; frozen micro calibration only; residuals are reported without refitting"
+}

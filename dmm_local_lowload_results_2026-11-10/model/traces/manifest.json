@@ -1,0 +1,198 @@
+{
+  "schema": 2,
+  "peak_semantics": "live-payload",
+  "superstep_semantics": "delivery-merged",
+  "settings": {
+    "data_dir": "/tmp/opencode/dmm_validation/data",
+    "output_dir": "/tmp/opencode/dmm_validation/model",
+    "cases": [
+      {
+        "layout": "ring",
+        "P": 16,
+        "c": 1
+      },
+      {
+        "layout": "cannon",
+        "P": 16,
+        "c": 1
+      },
+      {
+        "layout": "ring",
+        "P": 64,
+        "c": 1
+      },
+      {
+        "layout": "cannon",
+        "P": 64,
+        "c": 1
+      },
+      {
+        "layout": "2.5d",
+        "P": 64,
+        "c": 4
+      },
+      {
+        "layout": "ring",
+        "P": 256,
+        "c": 1
+      },
+      {
+        "layout": "cannon",
+        "P": 256,
+        "c": 1
+      },
+      {
+        "layout": "2.5d",
+        "P": 256,
+        "c": 4
+      }
+    ],
+    "sizes": [
+      256,
+      512,
+      1024
+    ],
+    "group": 0,
+    "workers": 0,
+    "gammas": [
+      1,
+      10,
+      100,
+      1000
+    ],
+    "lambdas": [
+      100,
+      10000
+    ],
+    "budgets": [
+      8,
+      32
+    ]
+  },
+  "files": [
+    {
+      "name": "n256_ring_P16_c1.json",
+      "sha256": "3fa313bf0047eb401b2f59982f9aadd3339bdc3c2aadc636585ee4e68449e539"
+    },
+    {
+      "name": "n512_ring_P16_c1.json",
+      "sha256": "74918844ce39efbbc9f8b2a53fabc89e41d48bfe11bcd1f7ffc10335bb3664bf"
+    },
+    {
+      "name": "n1024_ring_P16_c1.json",
+      "sha256": "0b2d577a7b22da418dd722c88be86f5dbe5a6595f77963e8465f5728db23e536"
+    },
+    {
+      "name": "n256_cannon_P16_c1.json",
+      "sha256": "afd0df30061576f33a0e4f34e8ed9d1278615bdc60dc648ca2444274fdc9e989"
+    },
+    {
+      "name": "n512_cannon_P16_c1.json",
+      "sha256": "5085d9426d4d1573088f52d56a3904dd84cefeffd02616fcaa5e7e34a3a9d363"
+    },
+    {
+      "name": "n1024_cannon_P16_c1.json",
+      "sha256": "047182faaaa4a5bbf135709ef8e3441b57f463c98f59260f046f262c635fb11e"
+    },
+    {
+      "name": "n256_ring_P64_c1.json",
+      "sha256": "bbb0c45b1511875d98001b21867f51236c560db50000ecae231237050744426f"
+    },
+    {
+      "name": "n512_ring_P64_c1.json",
+      "sha256": "9cf7d43c779609d170c4070d03f56279e1994172e4b6f8d194c768405ae23c44"
+    },
+    {
+      "name": "n1024_ring_P64_c1.json",
+      "sha256": "6eb34711ecceec3c884e8975616ea54b641540161f3b9cd2e8089542f16878bd"
+    },
+    {
+      "name": "n256_cannon_P64_c1.json",
+      "sha256": "998420f7277c357ecddf83c671bf34e37e4a9bb7b20dda8e75f1188e2413423d"
+    },
+    {
+      "name": "n512_cannon_P64_c1.json",
+      "sha256": "d27f53b8c40e18357004a160aa1a2fe4a0f4a349839d09ea6d14f757eeb94a53"
+    },
+    {
+      "name": "n1024_cannon_P64_c1.json",
+      "sha256": "0de3fd768a348e0cddd8f4a4cfcf4a89a7762b02f222c919814b91e11ee2dfa2"
+    },
+    {
+      "name": "n256_2.5d_P64_c4.json",
+      "sha256": "7111d019abfffa2adb38691825f1812670f0a0941fe747cc17df4840c0142c1e"
+    },
+    {
+      "name": "n512_2.5d_P64_c4.json",
+      "sha256": "d99b62c2ebac01f97c5b54a31aeefd0ac9f631f5f1c5adc2891f1230a9d4aa5c"
+    },
+    {
+      "name": "n1024_2.5d_P64_c4.json",
+      "sha256": "d808d21d5158c41ee6cff27ae8c5b5c63560e42c4445025377dfe2fa2fe59e97"
+    },
+    {
+      "name": "n256_ring_P256_c1.json",
+      "sha256": "14fb9673c83d496a30fef30e64a4723ade94113e25e7f417b0c28cab949b652e"
+    },
+    {
+      "name": "n512_ring_P256_c1.json",
+      "sha256": "3c7b441c00f30d7c8adad6e5d87943779f2e9037a82c7017fecc13f8c04c7f2f"
+    },
+    {
+      "name": "n1024_ring_P256_c1.json",
+      "sha256": "44154f14e6206b8ed615e3c214539b04218daabd4d9ccca8f0e9167151162811"
+    },
+    {
+      "name": "n256_cannon_P256_c1.json",
+      "sha256": "80975d27021ae0da3fd7a48fa043485d100a65fbc2bc723d31e4f25a12261f40"
+    },
+    {
+      "name": "n512_cannon_P256_c1.json",
+      "sha256": "eebf55c84a2a8376d7fcbe6f065f71ed9e5f91a93fe881c64c2046492ee75817"
+    },
+    {
+      "name": "n1024_cannon_P256_c1.json",
+      "sha256": "f273687a832342f5445ff0fc8fba1659dd2951062d651bdbc61e38294fbdc717"
+    },
+    {
+      "name": "n256_2.5d_P256_c4.json",
+      "sha256": "473e0df48ec282a34a32bf49ed1ea25b9e8b9906315f73f8ca70e848e4adbcf1"
+    },
+    {
+      "name": "n512_2.5d_P256_c4.json",
+      "sha256": "029d2b1d6a72746e5e0e1a02e37cec4e2b213997e6c77f5645d8f4bbd9162af8"
+    },
+    {
+      "name": "n1024_2.5d_P256_c4.json",
+      "sha256": "4e7607e2953eb79aacdcf0191ba743cd7d5569fc3e9d9c4e7e2eb9cdad25c50c"
+    }
+  ],
+  "compiler": "16.2.0",
+  "build_type": "Release",
+  "git": {
+    "commit": "0b8b2b8df622842b03d3e398593a7c3504770e75",
+    "dirty": false
+  },
+  "correctness_sha256": "a02a60682244c8e5d014110ef5a8a136a24756bcab6a0f2fb0d8881cb316fc6b",
+  "validation_rule": "abs(error) <= 1e-4 + 1e-3 * abs(FP64 reference)",
+  "input_manifest": {
+    "seed": 5206,
+    "numpy_version": "2.5.4",
+    "groups": [
+      0
+    ],
+    "sizes": [
+      256,
+      512,
+      1024
+    ],
+    "value_range": [
+      0,
+      255
+    ],
+    "dtype": "float32",
+    "reference_dtype": "float64",
+    "reference": "numpy.matmul(float64)"
+  },
+  "purpose": "correctness/counting only; no statistical wall-clock measurements"
+}

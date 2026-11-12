@@ -1,0 +1,110 @@
+{
+  "schema": 2,
+  "peak_semantics": "live-payload",
+  "superstep_semantics": "delivery-merged",
+  "settings": {
+    "data_dir": "/tmp/opencode/dmm/configs/../data_smoke",
+    "output_dir": "/tmp/opencode/dmm/configs/../results/model_smoke",
+    "cases": [
+      {
+        "layout": "cannon",
+        "P": 4,
+        "c": 1
+      },
+      {
+        "layout": "cannon",
+        "P": 16,
+        "c": 1
+      },
+      {
+        "layout": "ring",
+        "P": 4,
+        "c": 1
+      },
+      {
+        "layout": "2.5d",
+        "P": 8,
+        "c": 2
+      }
+    ],
+    "sizes": [
+      4,
+      12
+    ],
+    "group": 0,
+    "workers": 0,
+    "gammas": [
+      1,
+      10
+    ],
+    "lambdas": [
+      100
+    ],
+    "budgets": [
+      8,
+      32
+    ]
+  },
+  "files": [
+    {
+      "name": "n4_cannon_P4_c1.json",
+      "sha256": "8981a3de881f114766f2984346581524c983f9cf49a92429fe62affba3c0b891"
+    },
+    {
+      "name": "n12_cannon_P4_c1.json",
+      "sha256": "a4fc3ffe8034a6136f40f09b4b6616804dff2dcc7c5b5402696063004ec2df7a"
+    },
+    {
+      "name": "n4_cannon_P16_c1.json",
+      "sha256": "a4134f6918e2ea46b3315d9b476364f1996d3a990146ccf67255843e6bcd57f4"
+    },
+    {
+      "name": "n12_cannon_P16_c1.json",
+      "sha256": "7668cf87469ea73cddf136e3b77ef374f05dd20ddcfedfb5c1000b8266dbbb40"
+    },
+    {
+      "name": "n4_ring_P4_c1.json",
+      "sha256": "3a6220c5903c15f0f976a5ece39a24d7fd786ac061e6b40ff2a185cd9a8d7484"
+    },
+    {
+      "name": "n12_ring_P4_c1.json",
+      "sha256": "3bf16953b856c0de966fd01e18c9c4dae54d6103c0cc0c4282dad466bddcb2e8"
+    },
+    {
+      "name": "n4_2.5d_P8_c2.json",
+      "sha256": "3e0682837062ffd6227f740813e80148622bf29f8b90253df475c4a4d6bdfe43"
+    },
+    {
+      "name": "n12_2.5d_P8_c2.json",
+      "sha256": "b43896c8d64ecacc06fd75486701384cd8403857c43e5f5425d1a2fb7a295ebb"
+    }
+  ],
+  "compiler": "16.2.0",
+  "build_type": "Release",
+  "git": {
+    "commit": "0b8b2b8df622842b03d3e398593a7c3504770e75",
+    "dirty": false
+  },
+  "correctness_sha256": "aec81cabce56605a027b9b0680ae35652e111af07a79028aa7550c7ff9cdb817",
+  "validation_rule": "abs(error) <= 1e-4 + 1e-3 * abs(FP64 reference)",
+  "input_manifest": {
+    "seed": 5206,
+    "numpy_version": "2.5.4",
+    "groups": [
+      0,
+      1
+    ],
+    "sizes": [
+      4,
+      12
+    ],
+    "value_range": [
+      0,
+      255
+    ],
+    "dtype": "float32",
+    "reference_dtype": "float64",
+    "reference": "numpy.matmul(float64)"
+  },
+  "purpose": "correctness/counting only; no statistical wall-clock measurements"
+}

@@ -1,0 +1,5 @@
+data_dir: ./data_padding
+seed: 5206
+groups: [0]
+sizes: [17, 65, 257]
+value_range: [-1, 1]

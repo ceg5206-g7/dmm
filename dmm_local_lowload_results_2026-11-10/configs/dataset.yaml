@@ -1,0 +1,5 @@
+data_dir: ./data
+seed: 5206
+groups: [0]
+sizes: [256, 512, 1024]
+value_range: [0, 255]

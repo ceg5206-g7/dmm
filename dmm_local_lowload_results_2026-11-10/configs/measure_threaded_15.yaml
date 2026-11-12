@@ -1,0 +1,10 @@
+data_dir: ./data
+output_dir: ./measure_threaded_15
+cases:
+  - {layout: cannon, P: 4, c: 1}
+  - {layout: ring, P: 4, c: 1}
+sizes: [256, 512, 1024]
+group: 0
+workers: 4
+warmups: 5
+repeats: 15
