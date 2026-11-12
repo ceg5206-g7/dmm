@@ -1,0 +1,307 @@
+{
+  "package": "dmm local low-load validation",
+  "created": "2026-11-10",
+  "source": {
+    "commit": "0b8b2b8df622842b03d3e398593a7c3504770e75",
+    "status_lines": []
+  },
+  "host": {
+    "platform": "WSL2 Ubuntu 24.04",
+    "cpu": "13th Gen Intel Core i5-13600K",
+    "physical_cores": 10,
+    "logical_cpus": 20,
+    "compiler": "GCC 16.2.0 (conda-forge)",
+    "cmake": "4.4.5",
+    "python": "3.12.16",
+    "uv": "0.13.7"
+  },
+  "load": {
+    "5rep_serial": {
+      "before": [
+        0.33642578125,
+        0.27978515625,
+        0.162109375
+      ],
+      "after": [
+        0.33642578125,
+        0.27978515625,
+        0.162109375
+      ],
+      "physical_cores": 10,
+      "logical_cpus": 20,
+      "git": {
+        "commit": "0b8b2b8df622842b03d3e398593a7c3504770e75",
+        "dirty": false
+      },
+      "calibration": {
+        "w": 4.1662675363046153e-11,
+        "g": 5.25665283203125e-11,
+        "l": 9.38e-09
+      }
+    },
+    "5rep_threaded": {
+      "before": [
+        0.2841796875,
+        0.27001953125,
+        0.16015625
+      ],
+      "after": [
+        0.2841796875,
+        0.27001953125,
+        0.16015625
+      ],
+      "physical_cores": 10,
+      "logical_cpus": 20,
+      "git": {
+        "commit": "0b8b2b8df622842b03d3e398593a7c3504770e75",
+        "dirty": false
+      },
+      "calibration": {
+        "w": 5.085560127540871e-11,
+        "g": 5.5877685546875e-11,
+        "l": 0.00021051776000000002
+      }
+    },
+    "15rep_serial": {
+      "before": [
+        0.12109375,
+        0.22509765625,
+        0.1591796875
+      ],
+      "after": [
+        0.19189453125,
+        0.23828125,
+        0.1640625
+      ],
+      "physical_cores": 10,
+      "logical_cpus": 20,
+      "git": {
+        "commit": "0b8b2b8df622842b03d3e398593a7c3504770e75",
+        "dirty": false
+      },
+      "calibration": {
+        "w": 4.5258641242980955e-11,
+        "g": 4.430389404296875e-11,
+        "l": 8.85e-09
+      }
+    },
+    "15rep_threaded": {
+      "before": [
+        0.17626953125,
+        0.23388671875,
+        0.1630859375
+      ],
+      "after": [
+        0.162109375,
+        0.22998046875,
+        0.162109375
+      ],
+      "physical_cores": 10,
+      "logical_cpus": 20,
+      "git": {
+        "commit": "0b8b2b8df622842b03d3e398593a7c3504770e75",
+        "dirty": false
+      },
+      "calibration": {
+        "w": 4.594993591308594e-11,
+        "g": 7.240867614746094e-11,
+        "l": 0.00021020419
+      }
+    }
+  },
+  "model": {
+    "model": {
+      "scenarios": 192,
+      "selection_cells": 144,
+      "executed_configurations": 24,
+      "winners": {
+        "cannon(c=1)": 141,
+        "2.5d(c=4)": 3
+      },
+      "analysis_git": {
+        "commit": "0b8b2b8df622842b03d3e398593a7c3504770e75",
+        "dirty": false
+      }
+    },
+    "model_direct": {
+      "scenarios": 240,
+      "selection_cells": 144,
+      "executed_configurations": 30,
+      "winners": {
+        "cannon(c=1)": 116,
+        "2.5d-direct(c=4)": 28
+      },
+      "analysis_git": {
+        "commit": "0b8b2b8df622842b03d3e398593a7c3504770e75",
+        "dirty": false
+      }
+    },
+    "model_padding": {
+      "scenarios": 9,
+      "selection_cells": 6,
+      "executed_configurations": 9,
+      "winners": {
+        "cannon(c=1)": 6
+      },
+      "analysis_git": {
+        "commit": "0b8b2b8df622842b03d3e398593a7c3504770e75",
+        "dirty": false
+      }
+    }
+  },
+  "measurement_15rep": {
+    "15rep_serial": [
+      {
+        "n": "256",
+        "layout": "cannon",
+        "P": "1",
+        "H": "1",
+        "total_median_s": "0.001505129",
+        "total_iqr_s": "0.00017366300000000012",
+        "gflops": "22.293392792245715",
+        "speedup": "1.0",
+        "parallel_efficiency": "1.0",
+        "relative_residual": "-0.008974546367786359"
+      },
+      {
+        "n": "512",
+        "layout": "cannon",
+        "P": "1",
+        "H": "1",
+        "total_median_s": "0.013471073",
+        "total_iqr_s": "0.000942231499999998",
+        "gflops": "19.926805830537774",
+        "speedup": "1.0",
+        "parallel_efficiency": "1.0",
+        "relative_residual": "0.09813918683389217"
+      },
+      {
+        "n": "1024",
+        "layout": "cannon",
+        "P": "1",
+        "H": "1",
+        "total_median_s": "0.112499063",
+        "total_iqr_s": "0.0039264725",
+        "gflops": "19.08890252712594",
+        "speedup": "1.0",
+        "parallel_efficiency": "1.0",
+        "relative_residual": "0.1360621301352528"
+      },
+      {
+        "n": "256",
+        "layout": "ring",
+        "P": "1",
+        "H": "1",
+        "total_median_s": "0.001462608",
+        "total_iqr_s": "4.3699000000000125e-05",
+        "gflops": "22.941507225449335",
+        "speedup": "1.0",
+        "parallel_efficiency": "1.0",
+        "relative_residual": "-0.03830749592508719"
+      },
+      {
+        "n": "512",
+        "layout": "ring",
+        "P": "1",
+        "H": "1",
+        "total_median_s": "0.013482926",
+        "total_iqr_s": "0.0006383629999999994",
+        "gflops": "19.909287939427983",
+        "speedup": "1.0",
+        "parallel_efficiency": "1.0",
+        "relative_residual": "0.09893202336050791"
+      },
+      {
+        "n": "1024",
+        "layout": "ring",
+        "P": "1",
+        "H": "1",
+        "total_median_s": "0.111787001",
+        "total_iqr_s": "0.001904704000000007",
+        "gflops": "19.21049521670234",
+        "speedup": "1.0",
+        "parallel_efficiency": "1.0",
+        "relative_residual": "0.13055900971884918"
+      }
+    ],
+    "15rep_threaded": [
+      {
+        "n": "256",
+        "layout": "cannon",
+        "P": "4",
+        "H": "4",
+        "total_median_s": "0.001851634",
+        "total_iqr_s": "0.0004273775",
+        "gflops": "18.12152509621232",
+        "speedup": "0.812865285472183",
+        "parallel_efficiency": "0.20321632136804574",
+        "relative_residual": "0.10716371020136804"
+      },
+      {
+        "n": "512",
+        "layout": "cannon",
+        "P": "4",
+        "H": "4",
+        "total_median_s": "0.00499762",
+        "total_iqr_s": "0.0003285384999999995",
+        "gflops": "53.712658425410496",
+        "speedup": "2.695497656884677",
+        "parallel_efficiency": "0.6738744142211692",
+        "relative_residual": "0.12538914473289295"
+      },
+      {
+        "n": "1024",
+        "layout": "cannon",
+        "P": "4",
+        "H": "4",
+        "total_median_s": "0.032298095",
+        "total_iqr_s": "0.0019041970000000033",
+        "gflops": "66.48948329615106",
+        "speedup": "3.4831485572136685",
+        "parallel_efficiency": "0.8707871393034171",
+        "relative_residual": "0.19392127027925335"
+      },
+      {
+        "n": "256",
+        "layout": "ring",
+        "P": "4",
+        "H": "4",
+        "total_median_s": "0.001418572",
+        "total_iqr_s": "0.0002645620000000001",
+        "gflops": "23.653668618864604",
+        "speedup": "1.031042484977851",
+        "parallel_efficiency": "0.25776062124446275",
+        "relative_residual": "0.13304943897807098"
+      },
+      {
+        "n": "512",
+        "layout": "ring",
+        "P": "4",
+        "H": "4",
+        "total_median_s": "0.005157646",
+        "total_iqr_s": "0.0007616239999999989",
+        "gflops": "52.04611871384736",
+        "speedup": "2.614162740133774",
+        "parallel_efficiency": "0.6535406850334435",
+        "relative_residual": "0.2363374909794119"
+      },
+      {
+        "n": "1024",
+        "layout": "ring",
+        "P": "4",
+        "H": "4",
+        "total_median_s": "0.031799685",
+        "total_iqr_s": "0.0009107404999999964",
+        "gflops": "67.53160127215097",
+        "speedup": "3.5153493187118046",
+        "parallel_efficiency": "0.8788373296779511",
+        "relative_residual": "0.1960000465413415"
+      }
+    ]
+  },
+  "notes": [
+    "Low-load but not idle: 1-min load ~0.1-0.34 during 15-rep measurement.",
+    "Timing is host-specific and must not be compared numerically with the 8-core macOS releases.",
+    "Counts/model reproduce 0b8b2b8 exactly; data matrices excluded, only manifests included."
+  ]
+}

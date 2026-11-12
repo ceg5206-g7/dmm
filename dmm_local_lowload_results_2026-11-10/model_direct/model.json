@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "units": "T_model stores T_BSP/w0 in FLOP-equivalents; w=w0",
+  "peak_semantics": "live-payload",
+  "superstep_semantics": "delivery-merged",
+  "assumptions": "equal-speed logical nodes; ideal fully connected symmetric full-duplex network; no congestion or overlap",
+  "word_bytes": 4,
+  "formula": "W_crit + gamma*C_crit + lambda*S",
+  "w_over_w0": 1,
+  "scenarios": 240,
+  "selection_cells": 144,
+  "executed_configurations": 30,
+  "gammas": [
+    1,
+    10,
+    100,
+    1000
+  ],
+  "lambdas": [
+    100,
+    10000
+  ],
+  "budgets": [
+    8,
+    32
+  ],
+  "analysis_git": {
+    "commit": "0b8b2b8df622842b03d3e398593a7c3504770e75",
+    "dirty": false
+  },
+  "trace_directory": "/tmp/opencode/dmm_validation/model_direct/traces",
+  "trace_manifest_sha256": "60f78f4aeed4995c2a89bc3209142ab991108495891626743a0f4d886194820c",
+  "measurement": "t_measured intentionally blank; capture is not a timing experiment",
+  "native_budget": "native peak tested separately against the same per-node cap"
+}

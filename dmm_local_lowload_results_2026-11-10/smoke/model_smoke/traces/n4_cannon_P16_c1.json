@@ -1,0 +1,4052 @@
+{
+  "schema": 2,
+  "n": 4,
+  "n_padded": 16,
+  "layout": "cannon",
+  "P": 16,
+  "c": 1,
+  "H": 1,
+  "coverage": [
+    4,
+    4,
+    4
+  ],
+  "peak_words": [
+    116,
+    116,
+    116,
+    116,
+    116,
+    116,
+    116,
+    116,
+    116,
+    116,
+    116,
+    116,
+    116,
+    116,
+    116,
+    116
+  ],
+  "correctness": {
+    "max_abs_error": 0.008141938655171543,
+    "frobenius_relative_error": 4.001097743448303e-08
+  },
+  "inputs_sha256": {
+    "A": "d69b9b11eb3b01653564eaa2f8a02fb78e19b320b7d5fd5f84470a01f608a65a",
+    "B": "286a660bde6cb9222f30aa2adc2b6f644c17341446e8f1893448351b2e65bb21"
+  },
+  "supersteps": [
+    {
+      "label": "input_conversion",
+      "flops": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "peak_words": [
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80
+      ],
+      "messages": [
+        {
+          "source": 0,
+          "destination": 1,
+          "words": 8,
+          "regions": [
+            [
+              0,
+              4,
+              1,
+              4
+            ],
+            [
+              0,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 0,
+          "destination": 2,
+          "words": 8,
+          "regions": [
+            [
+              0,
+              8,
+              1,
+              4
+            ],
+            [
+              0,
+              8,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 0,
+          "destination": 3,
+          "words": 8,
+          "regions": [
+            [
+              0,
+              12,
+              1,
+              4
+            ],
+            [
+              0,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 1,
+          "destination": 0,
+          "words": 8,
+          "regions": [
+            [
+              1,
+              0,
+              1,
+              4
+            ],
+            [
+              1,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 1,
+          "destination": 2,
+          "words": 8,
+          "regions": [
+            [
+              1,
+              8,
+              1,
+              4
+            ],
+            [
+              1,
+              8,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 1,
+          "destination": 3,
+          "words": 8,
+          "regions": [
+            [
+              1,
+              12,
+              1,
+              4
+            ],
+            [
+              1,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 0,
+          "words": 8,
+          "regions": [
+            [
+              2,
+              0,
+              1,
+              4
+            ],
+            [
+              2,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 1,
+          "words": 8,
+          "regions": [
+            [
+              2,
+              4,
+              1,
+              4
+            ],
+            [
+              2,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 3,
+          "words": 8,
+          "regions": [
+            [
+              2,
+              12,
+              1,
+              4
+            ],
+            [
+              2,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 0,
+          "words": 8,
+          "regions": [
+            [
+              3,
+              0,
+              1,
+              4
+            ],
+            [
+              3,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 1,
+          "words": 8,
+          "regions": [
+            [
+              3,
+              4,
+              1,
+              4
+            ],
+            [
+              3,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 2,
+          "words": 8,
+          "regions": [
+            [
+              3,
+              8,
+              1,
+              4
+            ],
+            [
+              3,
+              8,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 4,
+          "destination": 5,
+          "words": 8,
+          "regions": [
+            [
+              4,
+              4,
+              1,
+              4
+            ],
+            [
+              4,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 4,
+          "destination": 6,
+          "words": 8,
+          "regions": [
+            [
+              4,
+              8,
+              1,
+              4
+            ],
+            [
+              4,
+              8,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 4,
+          "destination": 7,
+          "words": 8,
+          "regions": [
+            [
+              4,
+              12,
+              1,
+              4
+            ],
+            [
+              4,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 5,
+          "destination": 4,
+          "words": 8,
+          "regions": [
+            [
+              5,
+              0,
+              1,
+              4
+            ],
+            [
+              5,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 5,
+          "destination": 6,
+          "words": 8,
+          "regions": [
+            [
+              5,
+              8,
+              1,
+              4
+            ],
+            [
+              5,
+              8,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 5,
+          "destination": 7,
+          "words": 8,
+          "regions": [
+            [
+              5,
+              12,
+              1,
+              4
+            ],
+            [
+              5,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 6,
+          "destination": 4,
+          "words": 8,
+          "regions": [
+            [
+              6,
+              0,
+              1,
+              4
+            ],
+            [
+              6,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 6,
+          "destination": 5,
+          "words": 8,
+          "regions": [
+            [
+              6,
+              4,
+              1,
+              4
+            ],
+            [
+              6,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 6,
+          "destination": 7,
+          "words": 8,
+          "regions": [
+            [
+              6,
+              12,
+              1,
+              4
+            ],
+            [
+              6,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 7,
+          "destination": 4,
+          "words": 8,
+          "regions": [
+            [
+              7,
+              0,
+              1,
+              4
+            ],
+            [
+              7,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 7,
+          "destination": 5,
+          "words": 8,
+          "regions": [
+            [
+              7,
+              4,
+              1,
+              4
+            ],
+            [
+              7,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 7,
+          "destination": 6,
+          "words": 8,
+          "regions": [
+            [
+              7,
+              8,
+              1,
+              4
+            ],
+            [
+              7,
+              8,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 8,
+          "destination": 9,
+          "words": 8,
+          "regions": [
+            [
+              8,
+              4,
+              1,
+              4
+            ],
+            [
+              8,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 8,
+          "destination": 10,
+          "words": 8,
+          "regions": [
+            [
+              8,
+              8,
+              1,
+              4
+            ],
+            [
+              8,
+              8,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 8,
+          "destination": 11,
+          "words": 8,
+          "regions": [
+            [
+              8,
+              12,
+              1,
+              4
+            ],
+            [
+              8,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 9,
+          "destination": 8,
+          "words": 8,
+          "regions": [
+            [
+              9,
+              0,
+              1,
+              4
+            ],
+            [
+              9,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 9,
+          "destination": 10,
+          "words": 8,
+          "regions": [
+            [
+              9,
+              8,
+              1,
+              4
+            ],
+            [
+              9,
+              8,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 9,
+          "destination": 11,
+          "words": 8,
+          "regions": [
+            [
+              9,
+              12,
+              1,
+              4
+            ],
+            [
+              9,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 10,
+          "destination": 8,
+          "words": 8,
+          "regions": [
+            [
+              10,
+              0,
+              1,
+              4
+            ],
+            [
+              10,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 10,
+          "destination": 9,
+          "words": 8,
+          "regions": [
+            [
+              10,
+              4,
+              1,
+              4
+            ],
+            [
+              10,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 10,
+          "destination": 11,
+          "words": 8,
+          "regions": [
+            [
+              10,
+              12,
+              1,
+              4
+            ],
+            [
+              10,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 11,
+          "destination": 8,
+          "words": 8,
+          "regions": [
+            [
+              11,
+              0,
+              1,
+              4
+            ],
+            [
+              11,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 11,
+          "destination": 9,
+          "words": 8,
+          "regions": [
+            [
+              11,
+              4,
+              1,
+              4
+            ],
+            [
+              11,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 11,
+          "destination": 10,
+          "words": 8,
+          "regions": [
+            [
+              11,
+              8,
+              1,
+              4
+            ],
+            [
+              11,
+              8,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 12,
+          "destination": 13,
+          "words": 8,
+          "regions": [
+            [
+              12,
+              4,
+              1,
+              4
+            ],
+            [
+              12,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 12,
+          "destination": 14,
+          "words": 8,
+          "regions": [
+            [
+              12,
+              8,
+              1,
+              4
+            ],
+            [
+              12,
+              8,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 12,
+          "destination": 15,
+          "words": 8,
+          "regions": [
+            [
+              12,
+              12,
+              1,
+              4
+            ],
+            [
+              12,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 13,
+          "destination": 12,
+          "words": 8,
+          "regions": [
+            [
+              13,
+              0,
+              1,
+              4
+            ],
+            [
+              13,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 13,
+          "destination": 14,
+          "words": 8,
+          "regions": [
+            [
+              13,
+              8,
+              1,
+              4
+            ],
+            [
+              13,
+              8,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 13,
+          "destination": 15,
+          "words": 8,
+          "regions": [
+            [
+              13,
+              12,
+              1,
+              4
+            ],
+            [
+              13,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 14,
+          "destination": 12,
+          "words": 8,
+          "regions": [
+            [
+              14,
+              0,
+              1,
+              4
+            ],
+            [
+              14,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 14,
+          "destination": 13,
+          "words": 8,
+          "regions": [
+            [
+              14,
+              4,
+              1,
+              4
+            ],
+            [
+              14,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 14,
+          "destination": 15,
+          "words": 8,
+          "regions": [
+            [
+              14,
+              12,
+              1,
+              4
+            ],
+            [
+              14,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 15,
+          "destination": 12,
+          "words": 8,
+          "regions": [
+            [
+              15,
+              0,
+              1,
+              4
+            ],
+            [
+              15,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 15,
+          "destination": 13,
+          "words": 8,
+          "regions": [
+            [
+              15,
+              4,
+              1,
+              4
+            ],
+            [
+              15,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 15,
+          "destination": 14,
+          "words": 8,
+          "regions": [
+            [
+              15,
+              8,
+              1,
+              4
+            ],
+            [
+              15,
+              8,
+              1,
+              4
+            ]
+          ]
+        }
+      ],
+      "products": []
+    },
+    {
+      "label": "skew",
+      "flops": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "peak_words": [
+        76,
+        84,
+        84,
+        84,
+        84,
+        116,
+        116,
+        116,
+        84,
+        116,
+        116,
+        116,
+        84,
+        116,
+        116,
+        116
+      ],
+      "messages": [
+        {
+          "source": 1,
+          "destination": 13,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 10,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 7,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 4,
+          "destination": 7,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 5,
+          "destination": 4,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 5,
+          "destination": 1,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 6,
+          "destination": 5,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 6,
+          "destination": 14,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 7,
+          "destination": 6,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 7,
+          "destination": 11,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 8,
+          "destination": 10,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 9,
+          "destination": 11,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 9,
+          "destination": 5,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 10,
+          "destination": 8,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 10,
+          "destination": 2,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 11,
+          "destination": 9,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 11,
+          "destination": 15,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 12,
+          "destination": 13,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 13,
+          "destination": 14,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 13,
+          "destination": 9,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 14,
+          "destination": 15,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 14,
+          "destination": 6,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 15,
+          "destination": 12,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 15,
+          "destination": 3,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              12,
+              4,
+              4
+            ]
+          ]
+        }
+      ],
+      "products": []
+    },
+    {
+      "label": "multiply",
+      "flops": [
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128
+      ],
+      "peak_words": [
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116
+      ],
+      "messages": [
+        {
+          "source": 0,
+          "destination": 3,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 0,
+          "destination": 12,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 1,
+          "destination": 0,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 1,
+          "destination": 13,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 1,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 14,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 2,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 15,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 4,
+          "destination": 7,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 4,
+          "destination": 0,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 5,
+          "destination": 4,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 5,
+          "destination": 1,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 6,
+          "destination": 5,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 6,
+          "destination": 2,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 7,
+          "destination": 6,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 7,
+          "destination": 3,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 8,
+          "destination": 11,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 8,
+          "destination": 4,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 9,
+          "destination": 8,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 9,
+          "destination": 5,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 10,
+          "destination": 9,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 10,
+          "destination": 6,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 11,
+          "destination": 10,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 11,
+          "destination": 7,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 12,
+          "destination": 15,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 12,
+          "destination": 8,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 13,
+          "destination": 12,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 13,
+          "destination": 9,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 14,
+          "destination": 13,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 14,
+          "destination": 10,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 15,
+          "destination": 14,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 15,
+          "destination": 11,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              12,
+              4,
+              4
+            ]
+          ]
+        }
+      ],
+      "products": [
+        {
+          "node": 0,
+          "i": 0,
+          "k": 0,
+          "j": 0,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 1,
+          "i": 0,
+          "k": 1,
+          "j": 1,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 2,
+          "i": 0,
+          "k": 2,
+          "j": 2,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 3,
+          "i": 0,
+          "k": 3,
+          "j": 3,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 4,
+          "i": 1,
+          "k": 1,
+          "j": 0,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 5,
+          "i": 1,
+          "k": 2,
+          "j": 1,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 6,
+          "i": 1,
+          "k": 3,
+          "j": 2,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 7,
+          "i": 1,
+          "k": 0,
+          "j": 3,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 8,
+          "i": 2,
+          "k": 2,
+          "j": 0,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 9,
+          "i": 2,
+          "k": 3,
+          "j": 1,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 10,
+          "i": 2,
+          "k": 0,
+          "j": 2,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 11,
+          "i": 2,
+          "k": 1,
+          "j": 3,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 12,
+          "i": 3,
+          "k": 3,
+          "j": 0,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 13,
+          "i": 3,
+          "k": 0,
+          "j": 1,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 14,
+          "i": 3,
+          "k": 1,
+          "j": 2,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 15,
+          "i": 3,
+          "k": 2,
+          "j": 3,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        }
+      ]
+    },
+    {
+      "label": "multiply",
+      "flops": [
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128
+      ],
+      "peak_words": [
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116
+      ],
+      "messages": [
+        {
+          "source": 0,
+          "destination": 3,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 0,
+          "destination": 12,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 1,
+          "destination": 0,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 1,
+          "destination": 13,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 1,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 14,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 2,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 15,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 4,
+          "destination": 7,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 4,
+          "destination": 0,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 5,
+          "destination": 4,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 5,
+          "destination": 1,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 6,
+          "destination": 5,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 6,
+          "destination": 2,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 7,
+          "destination": 6,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 7,
+          "destination": 3,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 8,
+          "destination": 11,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 8,
+          "destination": 4,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 9,
+          "destination": 8,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 9,
+          "destination": 5,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 10,
+          "destination": 9,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 10,
+          "destination": 6,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 11,
+          "destination": 10,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 11,
+          "destination": 7,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 12,
+          "destination": 15,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 12,
+          "destination": 8,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 13,
+          "destination": 12,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 13,
+          "destination": 9,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 14,
+          "destination": 13,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 14,
+          "destination": 10,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 15,
+          "destination": 14,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 15,
+          "destination": 11,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              12,
+              4,
+              4
+            ]
+          ]
+        }
+      ],
+      "products": [
+        {
+          "node": 0,
+          "i": 0,
+          "k": 1,
+          "j": 0,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 1,
+          "i": 0,
+          "k": 2,
+          "j": 1,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 2,
+          "i": 0,
+          "k": 3,
+          "j": 2,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 3,
+          "i": 0,
+          "k": 0,
+          "j": 3,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 4,
+          "i": 1,
+          "k": 2,
+          "j": 0,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 5,
+          "i": 1,
+          "k": 3,
+          "j": 1,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 6,
+          "i": 1,
+          "k": 0,
+          "j": 2,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 7,
+          "i": 1,
+          "k": 1,
+          "j": 3,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 8,
+          "i": 2,
+          "k": 3,
+          "j": 0,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 9,
+          "i": 2,
+          "k": 0,
+          "j": 1,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 10,
+          "i": 2,
+          "k": 1,
+          "j": 2,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 11,
+          "i": 2,
+          "k": 2,
+          "j": 3,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 12,
+          "i": 3,
+          "k": 0,
+          "j": 0,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 13,
+          "i": 3,
+          "k": 1,
+          "j": 1,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 14,
+          "i": 3,
+          "k": 2,
+          "j": 2,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 15,
+          "i": 3,
+          "k": 3,
+          "j": 3,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        }
+      ]
+    },
+    {
+      "label": "multiply",
+      "flops": [
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128
+      ],
+      "peak_words": [
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116,
+        116
+      ],
+      "messages": [
+        {
+          "source": 0,
+          "destination": 3,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 0,
+          "destination": 12,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 1,
+          "destination": 0,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 1,
+          "destination": 13,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 1,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 14,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 2,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 15,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 4,
+          "destination": 7,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 4,
+          "destination": 0,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 5,
+          "destination": 4,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 5,
+          "destination": 1,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 6,
+          "destination": 5,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 6,
+          "destination": 2,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 7,
+          "destination": 6,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 7,
+          "destination": 3,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 8,
+          "destination": 11,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 8,
+          "destination": 4,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 9,
+          "destination": 8,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 9,
+          "destination": 5,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 10,
+          "destination": 9,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 10,
+          "destination": 6,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 11,
+          "destination": 10,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 11,
+          "destination": 7,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 12,
+          "destination": 15,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 12,
+          "destination": 8,
+          "words": 16,
+          "regions": [
+            [
+              4,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 13,
+          "destination": 12,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 13,
+          "destination": 9,
+          "words": 16,
+          "regions": [
+            [
+              8,
+              4,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 14,
+          "destination": 13,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              12,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 14,
+          "destination": 10,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              8,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 15,
+          "destination": 14,
+          "words": 16,
+          "regions": [
+            [
+              12,
+              0,
+              4,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 15,
+          "destination": 11,
+          "words": 16,
+          "regions": [
+            [
+              0,
+              12,
+              4,
+              4
+            ]
+          ]
+        }
+      ],
+      "products": [
+        {
+          "node": 0,
+          "i": 0,
+          "k": 2,
+          "j": 0,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 1,
+          "i": 0,
+          "k": 3,
+          "j": 1,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 2,
+          "i": 0,
+          "k": 0,
+          "j": 2,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 3,
+          "i": 0,
+          "k": 1,
+          "j": 3,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 4,
+          "i": 1,
+          "k": 3,
+          "j": 0,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 5,
+          "i": 1,
+          "k": 0,
+          "j": 1,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 6,
+          "i": 1,
+          "k": 1,
+          "j": 2,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 7,
+          "i": 1,
+          "k": 2,
+          "j": 3,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 8,
+          "i": 2,
+          "k": 0,
+          "j": 0,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 9,
+          "i": 2,
+          "k": 1,
+          "j": 1,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 10,
+          "i": 2,
+          "k": 2,
+          "j": 2,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 11,
+          "i": 2,
+          "k": 3,
+          "j": 3,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 12,
+          "i": 3,
+          "k": 1,
+          "j": 0,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 13,
+          "i": 3,
+          "k": 2,
+          "j": 1,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 14,
+          "i": 3,
+          "k": 3,
+          "j": 2,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 15,
+          "i": 3,
+          "k": 0,
+          "j": 3,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        }
+      ]
+    },
+    {
+      "label": "multiply",
+      "flops": [
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128
+      ],
+      "peak_words": [
+        84,
+        84,
+        84,
+        84,
+        84,
+        84,
+        84,
+        84,
+        84,
+        84,
+        84,
+        84,
+        84,
+        84,
+        84,
+        84
+      ],
+      "messages": [],
+      "products": [
+        {
+          "node": 0,
+          "i": 0,
+          "k": 3,
+          "j": 0,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 1,
+          "i": 0,
+          "k": 0,
+          "j": 1,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 2,
+          "i": 0,
+          "k": 1,
+          "j": 2,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 3,
+          "i": 0,
+          "k": 2,
+          "j": 3,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 4,
+          "i": 1,
+          "k": 0,
+          "j": 0,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 5,
+          "i": 1,
+          "k": 1,
+          "j": 1,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 6,
+          "i": 1,
+          "k": 2,
+          "j": 2,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 7,
+          "i": 1,
+          "k": 3,
+          "j": 3,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 8,
+          "i": 2,
+          "k": 1,
+          "j": 0,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 9,
+          "i": 2,
+          "k": 2,
+          "j": 1,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 10,
+          "i": 2,
+          "k": 3,
+          "j": 2,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 11,
+          "i": 2,
+          "k": 0,
+          "j": 3,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 12,
+          "i": 3,
+          "k": 2,
+          "j": 0,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 13,
+          "i": 3,
+          "k": 3,
+          "j": 1,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 14,
+          "i": 3,
+          "k": 0,
+          "j": 2,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        },
+        {
+          "node": 15,
+          "i": 3,
+          "k": 1,
+          "j": 3,
+          "m": 4,
+          "n": 4,
+          "inner": 4
+        }
+      ]
+    },
+    {
+      "label": "output_conversion",
+      "flops": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "peak_words": [
+        44,
+        44,
+        44,
+        44,
+        44,
+        44,
+        44,
+        44,
+        44,
+        44,
+        44,
+        44,
+        44,
+        44,
+        44,
+        44
+      ],
+      "messages": [
+        {
+          "source": 1,
+          "destination": 0,
+          "words": 4,
+          "regions": [
+            [
+              0,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 0,
+          "words": 4,
+          "regions": [
+            [
+              0,
+              8,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 0,
+          "words": 4,
+          "regions": [
+            [
+              0,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 0,
+          "destination": 1,
+          "words": 4,
+          "regions": [
+            [
+              1,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 1,
+          "words": 4,
+          "regions": [
+            [
+              1,
+              8,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 1,
+          "words": 4,
+          "regions": [
+            [
+              1,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 0,
+          "destination": 2,
+          "words": 4,
+          "regions": [
+            [
+              2,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 1,
+          "destination": 2,
+          "words": 4,
+          "regions": [
+            [
+              2,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 2,
+          "words": 4,
+          "regions": [
+            [
+              2,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 0,
+          "destination": 3,
+          "words": 4,
+          "regions": [
+            [
+              3,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 1,
+          "destination": 3,
+          "words": 4,
+          "regions": [
+            [
+              3,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 3,
+          "words": 4,
+          "regions": [
+            [
+              3,
+              8,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 5,
+          "destination": 4,
+          "words": 4,
+          "regions": [
+            [
+              4,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 6,
+          "destination": 4,
+          "words": 4,
+          "regions": [
+            [
+              4,
+              8,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 7,
+          "destination": 4,
+          "words": 4,
+          "regions": [
+            [
+              4,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 4,
+          "destination": 5,
+          "words": 4,
+          "regions": [
+            [
+              5,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 6,
+          "destination": 5,
+          "words": 4,
+          "regions": [
+            [
+              5,
+              8,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 7,
+          "destination": 5,
+          "words": 4,
+          "regions": [
+            [
+              5,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 4,
+          "destination": 6,
+          "words": 4,
+          "regions": [
+            [
+              6,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 5,
+          "destination": 6,
+          "words": 4,
+          "regions": [
+            [
+              6,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 7,
+          "destination": 6,
+          "words": 4,
+          "regions": [
+            [
+              6,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 4,
+          "destination": 7,
+          "words": 4,
+          "regions": [
+            [
+              7,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 5,
+          "destination": 7,
+          "words": 4,
+          "regions": [
+            [
+              7,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 6,
+          "destination": 7,
+          "words": 4,
+          "regions": [
+            [
+              7,
+              8,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 9,
+          "destination": 8,
+          "words": 4,
+          "regions": [
+            [
+              8,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 10,
+          "destination": 8,
+          "words": 4,
+          "regions": [
+            [
+              8,
+              8,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 11,
+          "destination": 8,
+          "words": 4,
+          "regions": [
+            [
+              8,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 8,
+          "destination": 9,
+          "words": 4,
+          "regions": [
+            [
+              9,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 10,
+          "destination": 9,
+          "words": 4,
+          "regions": [
+            [
+              9,
+              8,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 11,
+          "destination": 9,
+          "words": 4,
+          "regions": [
+            [
+              9,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 8,
+          "destination": 10,
+          "words": 4,
+          "regions": [
+            [
+              10,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 9,
+          "destination": 10,
+          "words": 4,
+          "regions": [
+            [
+              10,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 11,
+          "destination": 10,
+          "words": 4,
+          "regions": [
+            [
+              10,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 8,
+          "destination": 11,
+          "words": 4,
+          "regions": [
+            [
+              11,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 9,
+          "destination": 11,
+          "words": 4,
+          "regions": [
+            [
+              11,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 10,
+          "destination": 11,
+          "words": 4,
+          "regions": [
+            [
+              11,
+              8,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 13,
+          "destination": 12,
+          "words": 4,
+          "regions": [
+            [
+              12,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 14,
+          "destination": 12,
+          "words": 4,
+          "regions": [
+            [
+              12,
+              8,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 15,
+          "destination": 12,
+          "words": 4,
+          "regions": [
+            [
+              12,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 12,
+          "destination": 13,
+          "words": 4,
+          "regions": [
+            [
+              13,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 14,
+          "destination": 13,
+          "words": 4,
+          "regions": [
+            [
+              13,
+              8,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 15,
+          "destination": 13,
+          "words": 4,
+          "regions": [
+            [
+              13,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 12,
+          "destination": 14,
+          "words": 4,
+          "regions": [
+            [
+              14,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 13,
+          "destination": 14,
+          "words": 4,
+          "regions": [
+            [
+              14,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 15,
+          "destination": 14,
+          "words": 4,
+          "regions": [
+            [
+              14,
+              12,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 12,
+          "destination": 15,
+          "words": 4,
+          "regions": [
+            [
+              15,
+              0,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 13,
+          "destination": 15,
+          "words": 4,
+          "regions": [
+            [
+              15,
+              4,
+              1,
+              4
+            ]
+          ]
+        },
+        {
+          "source": 14,
+          "destination": 15,
+          "words": 4,
+          "regions": [
+            [
+              15,
+              8,
+              1,
+              4
+            ]
+          ]
+        }
+      ],
+      "products": []
+    },
+    {
+      "label": "output_conversion",
+      "flops": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "peak_words": [
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32
+      ],
+      "messages": [],
+      "products": []
+    }
+  ]
+}

@@ -1,0 +1,494 @@
+{
+  "schema": 2,
+  "n": 512,
+  "n_padded": 512,
+  "layout": "cannon",
+  "P": 4,
+  "c": 1,
+  "H": 4,
+  "coverage": [
+    2,
+    2,
+    2
+  ],
+  "peak_words": [
+    491520,
+    491520,
+    491520,
+    491520
+  ],
+  "correctness": {
+    "max_abs_error": 12.96106868237257,
+    "frobenius_relative_error": 3.0431206798488077e-07
+  },
+  "inputs_sha256": {
+    "A": "6f57ac26d4cb6b10e7b6cb6fb27dc79cfd71b6e3840546fbe298550cb06076ee",
+    "B": "f427cd65dfc80c47f110297b305dd56191ed755b08d490094b2e7577e88acafc"
+  },
+  "supersteps": [
+    {
+      "label": "input_conversion",
+      "flops": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "peak_words": [
+        262144,
+        262144,
+        262144,
+        262144
+      ],
+      "messages": [
+        {
+          "source": 0,
+          "destination": 1,
+          "words": 65536,
+          "regions": [
+            [
+              0,
+              256,
+              128,
+              256
+            ],
+            [
+              0,
+              256,
+              128,
+              256
+            ]
+          ]
+        },
+        {
+          "source": 1,
+          "destination": 0,
+          "words": 65536,
+          "regions": [
+            [
+              128,
+              0,
+              128,
+              256
+            ],
+            [
+              128,
+              0,
+              128,
+              256
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 3,
+          "words": 65536,
+          "regions": [
+            [
+              256,
+              256,
+              128,
+              256
+            ],
+            [
+              256,
+              256,
+              128,
+              256
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 2,
+          "words": 65536,
+          "regions": [
+            [
+              384,
+              0,
+              128,
+              256
+            ],
+            [
+              384,
+              0,
+              128,
+              256
+            ]
+          ]
+        }
+      ],
+      "products": []
+    },
+    {
+      "label": "skew",
+      "flops": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "peak_words": [
+        294912,
+        360448,
+        360448,
+        491520
+      ],
+      "messages": [
+        {
+          "source": 1,
+          "destination": 3,
+          "words": 65536,
+          "regions": [
+            [
+              0,
+              256,
+              256,
+              256
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 3,
+          "words": 65536,
+          "regions": [
+            [
+              256,
+              0,
+              256,
+              256
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 2,
+          "words": 65536,
+          "regions": [
+            [
+              256,
+              256,
+              256,
+              256
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 1,
+          "words": 65536,
+          "regions": [
+            [
+              256,
+              256,
+              256,
+              256
+            ]
+          ]
+        }
+      ],
+      "products": []
+    },
+    {
+      "label": "multiply",
+      "flops": [
+        33554432,
+        33554432,
+        33554432,
+        33554432
+      ],
+      "peak_words": [
+        491520,
+        491520,
+        491520,
+        491520
+      ],
+      "messages": [
+        {
+          "source": 0,
+          "destination": 1,
+          "words": 65536,
+          "regions": [
+            [
+              0,
+              0,
+              256,
+              256
+            ]
+          ]
+        },
+        {
+          "source": 0,
+          "destination": 2,
+          "words": 65536,
+          "regions": [
+            [
+              0,
+              0,
+              256,
+              256
+            ]
+          ]
+        },
+        {
+          "source": 1,
+          "destination": 0,
+          "words": 65536,
+          "regions": [
+            [
+              0,
+              256,
+              256,
+              256
+            ]
+          ]
+        },
+        {
+          "source": 1,
+          "destination": 3,
+          "words": 65536,
+          "regions": [
+            [
+              256,
+              256,
+              256,
+              256
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 3,
+          "words": 65536,
+          "regions": [
+            [
+              256,
+              256,
+              256,
+              256
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 0,
+          "words": 65536,
+          "regions": [
+            [
+              256,
+              0,
+              256,
+              256
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 2,
+          "words": 65536,
+          "regions": [
+            [
+              256,
+              0,
+              256,
+              256
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 1,
+          "words": 65536,
+          "regions": [
+            [
+              0,
+              256,
+              256,
+              256
+            ]
+          ]
+        }
+      ],
+      "products": [
+        {
+          "node": 0,
+          "i": 0,
+          "k": 0,
+          "j": 0,
+          "m": 256,
+          "n": 256,
+          "inner": 256
+        },
+        {
+          "node": 1,
+          "i": 0,
+          "k": 1,
+          "j": 1,
+          "m": 256,
+          "n": 256,
+          "inner": 256
+        },
+        {
+          "node": 2,
+          "i": 1,
+          "k": 1,
+          "j": 0,
+          "m": 256,
+          "n": 256,
+          "inner": 256
+        },
+        {
+          "node": 3,
+          "i": 1,
+          "k": 0,
+          "j": 1,
+          "m": 256,
+          "n": 256,
+          "inner": 256
+        }
+      ]
+    },
+    {
+      "label": "multiply",
+      "flops": [
+        33554432,
+        33554432,
+        33554432,
+        33554432
+      ],
+      "peak_words": [
+        360448,
+        360448,
+        360448,
+        360448
+      ],
+      "messages": [],
+      "products": [
+        {
+          "node": 0,
+          "i": 0,
+          "k": 1,
+          "j": 0,
+          "m": 256,
+          "n": 256,
+          "inner": 256
+        },
+        {
+          "node": 1,
+          "i": 0,
+          "k": 0,
+          "j": 1,
+          "m": 256,
+          "n": 256,
+          "inner": 256
+        },
+        {
+          "node": 2,
+          "i": 1,
+          "k": 0,
+          "j": 0,
+          "m": 256,
+          "n": 256,
+          "inner": 256
+        },
+        {
+          "node": 3,
+          "i": 1,
+          "k": 1,
+          "j": 1,
+          "m": 256,
+          "n": 256,
+          "inner": 256
+        }
+      ]
+    },
+    {
+      "label": "output_conversion",
+      "flops": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "peak_words": [
+        163840,
+        163840,
+        163840,
+        163840
+      ],
+      "messages": [
+        {
+          "source": 1,
+          "destination": 0,
+          "words": 32768,
+          "regions": [
+            [
+              0,
+              256,
+              128,
+              256
+            ]
+          ]
+        },
+        {
+          "source": 0,
+          "destination": 1,
+          "words": 32768,
+          "regions": [
+            [
+              128,
+              0,
+              128,
+              256
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": 2,
+          "words": 32768,
+          "regions": [
+            [
+              256,
+              256,
+              128,
+              256
+            ]
+          ]
+        },
+        {
+          "source": 2,
+          "destination": 3,
+          "words": 32768,
+          "regions": [
+            [
+              384,
+              0,
+              128,
+              256
+            ]
+          ]
+        }
+      ],
+      "products": []
+    },
+    {
+      "label": "output_conversion",
+      "flops": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "peak_words": [
+        131072,
+        131072,
+        131072,
+        131072
+      ],
+      "messages": [],
+      "products": []
+    }
+  ]
+}

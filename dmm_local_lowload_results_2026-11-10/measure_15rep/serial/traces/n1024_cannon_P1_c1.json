@@ -1,0 +1,48 @@
+{
+  "schema": 2,
+  "n": 1024,
+  "n_padded": 1024,
+  "layout": "cannon",
+  "P": 1,
+  "c": 1,
+  "H": 1,
+  "coverage": [
+    1,
+    1,
+    1
+  ],
+  "peak_words": [
+    3145728
+  ],
+  "correctness": {
+    "max_abs_error": 37.64776938408613,
+    "frobenius_relative_error": 4.264523330852849e-07
+  },
+  "inputs_sha256": {
+    "A": "5e31f61c7a3b9a4d98b4ba3831b71af52a55b42be1c98f8d155997f522069269",
+    "B": "6c9f70d7933412ab5f664e7ce598f440f800fe255345edb6a1182a352aa6accc"
+  },
+  "supersteps": [
+    {
+      "label": "multiply",
+      "flops": [
+        2147483648
+      ],
+      "peak_words": [
+        3145728
+      ],
+      "messages": [],
+      "products": [
+        {
+          "node": 0,
+          "i": 0,
+          "k": 0,
+          "j": 0,
+          "m": 1024,
+          "n": 1024,
+          "inner": 1024
+        }
+      ]
+    }
+  ]
+}

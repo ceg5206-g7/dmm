@@ -1,0 +1,84 @@
+{
+  "schema": 2,
+  "peak_semantics": "live-payload",
+  "superstep_semantics": "delivery-merged",
+  "settings": {
+    "data_dir": "/tmp/opencode/dmm_validation/data",
+    "output_dir": "/tmp/opencode/dmm_validation/measure_serial_15",
+    "cases": [
+      {
+        "layout": "cannon",
+        "P": 1,
+        "c": 1
+      },
+      {
+        "layout": "ring",
+        "P": 1,
+        "c": 1
+      }
+    ],
+    "sizes": [
+      256,
+      512,
+      1024
+    ],
+    "group": 0,
+    "workers": 0,
+    "warmups": 5,
+    "repeats": 15
+  },
+  "files": [
+    {
+      "name": "n256_cannon_P1_c1.json",
+      "sha256": "f5d4b3f19a29a5f82efae155f53d5fca930f8d3bb8f26d81973f6e947ea25684"
+    },
+    {
+      "name": "n512_cannon_P1_c1.json",
+      "sha256": "c7b95ed4fe08edeb5a15efe322495a0c313265ba5bc91ed4cd009036a10f2959"
+    },
+    {
+      "name": "n1024_cannon_P1_c1.json",
+      "sha256": "a14bff2204b45f638eb90845e255c34833e32d9cba86dca0d3e8f0f76c279678"
+    },
+    {
+      "name": "n256_ring_P1_c1.json",
+      "sha256": "51e8c3fe0e08d4500284d2fd5d707299d63f21cfef7baec0f1c1b2e5ce46fd6a"
+    },
+    {
+      "name": "n512_ring_P1_c1.json",
+      "sha256": "afd3e7344af0a8ee93a369e7a1cd8102cd64d8263e797eb8eb402ceb22dec61f"
+    },
+    {
+      "name": "n1024_ring_P1_c1.json",
+      "sha256": "1a2f2362de1847b3e2743ec1916811c35180a9957a3788732477ad79c43bb39b"
+    }
+  ],
+  "compiler": "16.2.0",
+  "build_type": "Release",
+  "git": {
+    "commit": "0b8b2b8df622842b03d3e398593a7c3504770e75",
+    "dirty": false
+  },
+  "correctness_sha256": "79ff1eb853da81e4981c3f1be3e11ac5868184101fa4f93932e22499629df5f4",
+  "validation_rule": "abs(error) <= 1e-4 + 1e-3 * abs(FP64 reference)",
+  "input_manifest": {
+    "seed": 5206,
+    "numpy_version": "2.5.4",
+    "groups": [
+      0
+    ],
+    "sizes": [
+      256,
+      512,
+      1024
+    ],
+    "value_range": [
+      0,
+      255
+    ],
+    "dtype": "float32",
+    "reference_dtype": "float64",
+    "reference": "numpy.matmul(float64)"
+  },
+  "purpose": "prepared measurement trace; live payload and in-flight messages counted; use measured_model.csv for statistical times"
+}

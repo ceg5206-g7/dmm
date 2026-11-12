@@ -1,0 +1,19 @@
+{
+  "seed": 5206,
+  "numpy_version": "2.5.4",
+  "groups": [
+    0
+  ],
+  "sizes": [
+    17,
+    65,
+    257
+  ],
+  "value_range": [
+    -1,
+    1
+  ],
+  "dtype": "float32",
+  "reference_dtype": "float64",
+  "reference": "numpy.matmul(float64)"
+}

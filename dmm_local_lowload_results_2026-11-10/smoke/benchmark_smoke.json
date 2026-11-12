@@ -1,0 +1,96 @@
+{
+  "started_at": "2026-11-10T12:07:24.000890+00:00",
+  "benchmark": {
+    "data_dir": "/tmp/opencode/dmm/data_smoke",
+    "output": "/tmp/opencode/dmm/results/benchmark_smoke.csv",
+    "cases": [
+      {
+        "layout": "cannon",
+        "P": 16,
+        "c": 1
+      },
+      {
+        "layout": "ring",
+        "P": 16,
+        "c": 1
+      },
+      {
+        "layout": "2.5d",
+        "P": 64,
+        "c": 4
+      }
+    ],
+    "modes": {
+      "sequential": {},
+      "threaded": {
+        "workers": [
+          1,
+          2
+        ]
+      }
+    },
+    "groups": [
+      0,
+      1
+    ],
+    "sizes": [
+      4,
+      12
+    ],
+    "repeats": 2,
+    "warmups": 1
+  },
+  "dataset": {
+    "seed": 5206,
+    "numpy_version": "2.5.4",
+    "groups": [
+      0,
+      1
+    ],
+    "sizes": [
+      4,
+      12
+    ],
+    "value_range": [
+      0,
+      255
+    ],
+    "dtype": "float32",
+    "reference_dtype": "float64",
+    "reference": "numpy.matmul(float64)"
+  },
+  "environment": {
+    "python_version": "3.12.16",
+    "numpy_version": "2.5.4",
+    "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "cpu": {
+      "processor": "x86_64",
+      "architecture": "x86_64",
+      "logical_count": 20
+    }
+  },
+  "git": {
+    "commit": "0b8b2b8df622842b03d3e398593a7c3504770e75",
+    "dirty": false
+  },
+  "native": {
+    "backend": "pybind11",
+    "compiler": "16.2.0",
+    "build_type": "Release",
+    "execution": "Per-case logical grids; BSP supersteps with copied messages",
+    "input_dtype": "float32",
+    "reference_dtype": "float64",
+    "timer": {
+      "name": "time.perf_counter",
+      "implementation": "clock_gettime(CLOCK_MONOTONIC)",
+      "monotonic": true,
+      "adjustable": false,
+      "resolution": 1e-09
+    },
+    "timing": "algorithm call including input/output copies; excludes worker startup and validation",
+    "statistics": {
+      "center": "median of group medians",
+      "spread": "median of group IQRs; linearly interpolated quartiles"
+    }
+  }
+}

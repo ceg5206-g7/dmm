@@ -1,0 +1,7 @@
+n,P,gamma,lambda,mu,M_cap,feasible,infeasible,best,T_model,native_best,native_T_model
+17,64,1,100,8,512.0,ring(c=1)|cannon(c=1),2.5d(c=4),cannon(c=1),10584,cannon(c=1),10116
+17,64,1,100,32,2048.0,ring(c=1)|cannon(c=1)|2.5d(c=4),,cannon(c=1),10584,cannon(c=1),10116
+65,64,1,100,8,2048.0,ring(c=1)|cannon(c=1),2.5d(c=4),cannon(c=1),71504,cannon(c=1),70532
+65,64,1,100,32,8192.0,ring(c=1)|cannon(c=1)|2.5d(c=4),,cannon(c=1),71504,cannon(c=1),70532
+257,64,1,100,8,12800.0,ring(c=1)|cannon(c=1),2.5d(c=4),cannon(c=1),1055000,cannon(c=1),1050500
+257,64,1,100,32,51200.0,ring(c=1)|cannon(c=1)|2.5d(c=4),,cannon(c=1),1055000,cannon(c=1),1050500

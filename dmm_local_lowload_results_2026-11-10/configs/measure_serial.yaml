@@ -1,0 +1,10 @@
+data_dir: ./data
+output_dir: ./measure_serial
+cases:
+  - {layout: cannon, P: 1, c: 1}
+  - {layout: ring, P: 1, c: 1}
+sizes: [256, 512, 1024]
+group: 0
+workers: 0
+warmups: 2
+repeats: 5
